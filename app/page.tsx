@@ -3,6 +3,11 @@
 import { useEffect, useState } from "react";
 import { checklistCategories } from "./checklist-data";
 
+const SEND_MESSAGE_PLACEHOLDER = `・〇〇の対応が完了しました。テスト等のレイアウト崩れも修正済みです。
+・△△について、ページ遷移周りで詰まっています。後ほどご相談させてください。
+
+サイト：https://example.com`;
+
 function getTodayKey() {
   const now = new Date();
   const yyyy = now.getFullYear();
@@ -36,6 +41,9 @@ export default function Home() {
     setChecked((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
+  const allItems = checklistCategories.flatMap((category) => category.items);
+  const allChecked = allItems.every((item) => checked[item.id]);
+
   return (
     <div className="flex flex-col flex-1 items-center bg-zinc-50 dark:bg-black">
       <main className="flex flex-1 w-full max-w-2xl flex-col gap-8 py-12 px-6">
@@ -67,6 +75,19 @@ export default function Home() {
             </ul>
           </section>
         ))}
+
+        {allChecked && (
+          <section className="flex flex-col gap-3">
+            <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">
+              送信文
+            </h2>
+            <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+              <pre className="whitespace-pre-wrap font-sans text-zinc-700 dark:text-zinc-300">
+                {SEND_MESSAGE_PLACEHOLDER}
+              </pre>
+            </div>
+          </section>
+        )}
       </main>
     </div>
   );
