@@ -1,10 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { checklistCategories } from "./checklist-data";
+
+function getTodayKey() {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  return `hourenso-gate-checklist-${yyyy}-${mm}-${dd}`;
+}
 
 export default function Home() {
   const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [storageKey, setStorageKey] = useState<string | null>(null);
+
+  // 初回マウント時に当日分の保存内容を読み込む
+  useEffect(() => {
+    const key = getTodayKey();
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      setChecked(JSON.parse(saved));
+    }
+    setStorageKey(key);
+  }, []);
+
+  // チェック状態が変わるたびに保存する（読み込み完了後のみ）
+  useEffect(() => {
+    if (storageKey) {
+      localStorage.setItem(storageKey, JSON.stringify(checked));
+    }
+  }, [checked, storageKey]);
 
   const toggleItem = (id: string) => {
     setChecked((prev) => ({ ...prev, [id]: !prev[id] }));
