@@ -14,6 +14,10 @@ import {
   type ChecklistTemplateSettings,
   type TemplateVisibilityRule,
 } from "../template-storage";
+import {
+  visibilityRuleTemplates,
+  type VisibilityRuleContent,
+} from "../checklist-visibility-rules";
 
 const SEND_MESSAGE_PLACEHOLDER = `・〇〇の対応が完了しました。テスト等のレイアウト崩れも修正済みです。
 ・△△について、ページ遷移周りで詰まっています。後ほどご相談させてください。
@@ -136,6 +140,15 @@ export default function ChecklistPage() {
       allItems.some((item) => item.label === rule.triggerLabel && checked[item.id])
     )
     .map((rule) => rule.targetLabel);
+  const revealedContents = visibilityRuleTemplates.reduce<VisibilityRuleContent[]>(
+    (acc, rule) => {
+      if (!checked[rule.triggerItemId]) {
+        return acc;
+      }
+      return [...acc, ...rule.contents];
+    },
+    []
+  );
 
   const remainingCount = allItems.filter((item) => !checked[item.id]).length;
   const allChecked = remainingCount === 0;
@@ -205,6 +218,41 @@ export default function ChecklistPage() {
             </div>
           </section>
         ) : null}
+
+        <section className="flex flex-col gap-3">
+          <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">
+            必要なURL・追加要素
+          </h2>
+          <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+            {revealedContents.length > 0 ? (
+              <ul className="space-y-2">
+                {revealedContents.map((content) => (
+                  <li key={content.id} className="text-zinc-700 dark:text-zinc-300">
+                    <span className="mr-2 text-sm font-medium text-zinc-500 dark:text-zinc-400">
+                      {content.label}
+                    </span>
+                    {content.type === "url" ? (
+                      <a
+                        href={content.value}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-sm text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+                      >
+                        {content.value}
+                      </a>
+                    ) : (
+                      <span className="text-sm">{content.value}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-zinc-500 dark:text-zinc-400">
+                特定のチェックをONにすると、必要なURLや追加要素がここに表示されます。
+              </p>
+            )}
+          </div>
+        </section>
 
         {allChecked ? (
           <section className="flex flex-col gap-3">
