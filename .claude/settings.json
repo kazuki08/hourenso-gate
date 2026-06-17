@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx next *)",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(cat /tmp/nextdev.log | head -20; echo \"---procs---\"; lsof -i :3000 2>/dev/null)",
+      "Read(//private/tmp/**)",
+      "Bash(curl -s http://localhost:3001)",
+      "Read(//tmp/**)",
+      "Bash(kill 70337)",
+      "Bash(npx next dev > /tmp/nextdev3.log 2>&1 & *)",
+      "Bash(curl -s http://localhost:3000 -o /tmp/page.html)",
+      "Bash(curl -s http://localhost:3001 -o /tmp/page2.html)",
+      "Bash(grep -o '物理ロック作動中.\\\\{0,40\\\\}' /tmp/page2.html)",
+      "Bash(node -e ' *)"
+    ],
+    "additionalDirectories": [
+      "/tmp"
+    ]
+  }
+}
