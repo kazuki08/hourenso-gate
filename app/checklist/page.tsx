@@ -1,39 +1,123 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { checklistCategories } from "../checklist-data";
+import {
+  checklistCategories as fallbackCategories,
+  type ChecklistCategory,
+} from "../checklist-data";
+import {
+  ALL_TOOLS_ID,
+  CHECKLIST_TEMPLATES_STORAGE_KEY,
+  getTodayProgressStorageKey,
+  type ChecklistTemplateSettings,
+  type TemplateVisibilityRule,
+} from "../template-storage";
 
 const SEND_MESSAGE_PLACEHOLDER = `・〇〇の対応が完了しました。テスト等のレイアウト崩れも修正済みです。
 ・△△について、ページ遷移周りで詰まっています。後ほどご相談させてください。
 
 サイト：https://example.com`;
 
-function getTodayKey() {
-  const now = new Date();
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const dd = String(now.getDate()).padStart(2, "0");
-  return `hourenso-gate-checklist-${yyyy}-${mm}-${dd}`;
-}
-
 export default function ChecklistPage() {
-  const [checked, setChecked] = useState<Record<string, boolean>>(
-    Object.fromEntries(
-      checklistCategories.flatMap((c) => c.items).map((i) => [i.id, true])
-    )
-  );
+  const searchParams = useSearchParams();
+  const requestedToolId = searchParams.get("tool");
+
+  const [categories, setCategories] = useState<ChecklistCategory[]>(fallbackCategories);
+  const [rules, setRules] = useState<TemplateVisibilityRule[]>([]);
+  const [activeToolName, setActiveToolName] = useState("共通");
+  const [activeToolId, setActiveToolId] = useState("default");
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [storageKey, setStorageKey] = useState<string | null>(null);
 
-  // 初回マウント時に当日分の保存内容を読み込む
   useEffect(() => {
-    const key = getTodayKey();
+    const saved = localStorage.getItem(CHECKLIST_TEMPLATES_STORAGE_KEY);
+    const fallbackToolId = requestedToolId || "fallback";
+
+    if (!saved) {
+      setCategories(fallbackCategories);
+      setRules([]);
+      setActiveToolName("共通");
+      setActiveToolId(fallbackToolId);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(saved) as Partial<ChecklistTemplateSettings>;
+      const tools = Array.isArray(parsed.tools) ? parsed.tools : [];
+      const items = Array.isArray(parsed.checklistItems) ? parsed.checklistItems : [];
+      const visibilityRules = Array.isArray(parsed.visibilityRules)
+        ? parsed.visibilityRules
+        : [];
+
+      if (tools.length === 0 || items.length === 0) {
+        setCategories(fallbackCategories);
+        setRules([]);
+        setActiveToolName("共通");
+        setActiveToolId(fallbackToolId);
+        return;
+      }
+
+      const selectableTool =
+        tools.find((tool) => tool.id === requestedToolId) ?? tools[0];
+      const toolId = selectableTool?.id || fallbackToolId;
+      const filteredItems = items.filter(
+        (item) => item.toolId === ALL_TOOLS_ID || item.toolId === toolId
+      );
+
+      if (filteredItems.length === 0) {
+        setCategories(fallbackCategories);
+        setRules([]);
+        setActiveToolName(selectableTool?.name || "共通");
+        setActiveToolId(toolId);
+        return;
+      }
+
+      setCategories([
+        {
+          id: `template-${toolId}`,
+          title: `${selectableTool?.name || "選択ツール"}のチェック項目`,
+          items: filteredItems.map((item) => ({
+            id: item.id,
+            label: item.label,
+          })),
+        },
+      ]);
+      setRules(
+        visibilityRules.filter(
+          (rule) => rule.toolId === ALL_TOOLS_ID || rule.toolId === toolId
+        )
+      );
+      setActiveToolName(selectableTool?.name || "共通");
+      setActiveToolId(toolId);
+    } catch {
+      setCategories(fallbackCategories);
+      setRules([]);
+      setActiveToolName("共通");
+      setActiveToolId(fallbackToolId);
+    }
+  }, [requestedToolId]);
+
+  // 初回マウント時に当日分の保存内容を読み込む（テンプレートとは別キー）
+  useEffect(() => {
+    const key = getTodayProgressStorageKey(activeToolId);
+    const allItems = categories.flatMap((category) => category.items);
+    const defaultChecked = Object.fromEntries(allItems.map((item) => [item.id, true]));
     const saved = localStorage.getItem(key);
+
     if (saved) {
-      setChecked(JSON.parse(saved));
+      try {
+        const parsed = JSON.parse(saved) as Record<string, boolean>;
+        setChecked({ ...defaultChecked, ...parsed });
+      } catch {
+        setChecked(defaultChecked);
+      }
+    } else {
+      setChecked(defaultChecked);
     }
     setStorageKey(key);
-  }, []);
+  }, [activeToolId, categories]);
 
   // チェック状態が変わるたびに保存する（読み込み完了後のみ）
   useEffect(() => {
@@ -46,7 +130,13 @@ export default function ChecklistPage() {
     setChecked((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const allItems = checklistCategories.flatMap((category) => category.items);
+  const allItems = categories.flatMap((category) => category.items);
+  const visibleTargets = rules
+    .filter((rule) =>
+      allItems.some((item) => item.label === rule.triggerLabel && checked[item.id])
+    )
+    .map((rule) => rule.targetLabel);
+
   const remainingCount = allItems.filter((item) => !checked[item.id]).length;
   const allChecked = remainingCount === 0;
 
@@ -54,9 +144,14 @@ export default function ChecklistPage() {
     <div className="flex flex-col flex-1 items-center bg-zinc-50 dark:bg-black">
       <main className="flex flex-1 w-full max-w-2xl flex-col gap-8 py-12 px-6">
         <div className="flex items-start justify-between gap-4">
-          <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
-            今日のチェックリスト
-          </h1>
+          <div className="space-y-1">
+            <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
+              今日のチェックリスト
+            </h1>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              選択ツール: {activeToolName}
+            </p>
+          </div>
           <Link
             href="/admin"
             className="mt-1 text-xs text-zinc-500 underline-offset-2 hover:text-zinc-700 hover:underline dark:text-zinc-400 dark:hover:text-zinc-200"
@@ -65,7 +160,7 @@ export default function ChecklistPage() {
           </Link>
         </div>
 
-        {checklistCategories.map((category) => (
+        {categories.map((category) => (
           <section key={category.id} className="flex flex-col gap-3">
             <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">
               {category.title}
@@ -89,6 +184,27 @@ export default function ChecklistPage() {
             </ul>
           </section>
         ))}
+
+        {rules.length > 0 ? (
+          <section className="flex flex-col gap-3">
+            <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">
+              表示ルールで出現する項目
+            </h2>
+            <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+              {visibleTargets.length > 0 ? (
+                <ul className="list-disc pl-5 text-zinc-700 dark:text-zinc-300">
+                  {visibleTargets.map((target, index) => (
+                    <li key={`${target}-${index}`}>{target}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-zinc-500 dark:text-zinc-400">
+                  条件を満たすとここにURL/追加項目が表示されます
+                </p>
+              )}
+            </div>
+          </section>
+        ) : null}
 
         {allChecked ? (
           <section className="flex flex-col gap-3">

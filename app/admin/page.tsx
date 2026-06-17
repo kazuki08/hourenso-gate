@@ -2,91 +2,162 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import {
+  ALL_TOOLS_ID,
+  CHECKLIST_TEMPLATES_STORAGE_KEY,
+  LEGACY_ADMIN_SETTINGS_STORAGE_KEY,
+  type ChecklistTemplateSettings,
+  createClientId,
+  type TemplateChecklistItem,
+  type TemplateTool,
+  type TemplateVisibilityRule,
+} from "../template-storage";
 
-type Tool = {
-  name: string;
-  description: string;
-};
-
-type ChecklistItem = {
+type AdminToolForm = TemplateTool;
+type AdminChecklistItemForm = {
+  id: string;
   title: string;
+  toolId: string;
 };
-
-type VisibilityRule = {
+type AdminRuleForm = {
+  id: string;
+  toolId: string;
   trigger: string;
   target: string;
 };
 
-const emptyTool: Tool = { name: "", description: "" };
-const emptyChecklistItem: ChecklistItem = { title: "" };
-const emptyRule: VisibilityRule = { trigger: "", target: "" };
-const ADMIN_SETTINGS_STORAGE_KEY = "hourenso-gate-admin-settings-v1";
-
-type AdminSettings = {
-  tools: Tool[];
-  checklistItems: ChecklistItem[];
-  visibilityRules: VisibilityRule[];
-};
-
 export default function AdminPage() {
-  const [tools, setTools] = useState<Tool[]>([{ ...emptyTool }]);
-  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([
-    { ...emptyChecklistItem },
+  const [tools, setTools] = useState<AdminToolForm[]>([
+    { id: createClientId("tool"), name: "", description: "" },
   ]);
-  const [visibilityRules, setVisibilityRules] = useState<VisibilityRule[]>([
-    { ...emptyRule },
+  const [checklistItems, setChecklistItems] = useState<AdminChecklistItemForm[]>([
+    { id: createClientId("item"), title: "", toolId: ALL_TOOLS_ID },
+  ]);
+  const [visibilityRules, setVisibilityRules] = useState<AdminRuleForm[]>([
+    {
+      id: createClientId("rule"),
+      toolId: ALL_TOOLS_ID,
+      trigger: "",
+      target: "",
+    },
   ]);
   const [saveMessage, setSaveMessage] = useState("");
 
   useEffect(() => {
-    const saved = localStorage.getItem(ADMIN_SETTINGS_STORAGE_KEY);
-    if (!saved) {
-      return;
-    }
+    const templateJson =
+      localStorage.getItem(CHECKLIST_TEMPLATES_STORAGE_KEY) ??
+      localStorage.getItem(LEGACY_ADMIN_SETTINGS_STORAGE_KEY);
+    if (!templateJson) return;
 
     try {
-      const parsed = JSON.parse(saved) as Partial<AdminSettings>;
+      const parsed = JSON.parse(templateJson) as Partial<ChecklistTemplateSettings> & {
+        checklistItems?: Array<{ id?: string; label?: string; title?: string; toolId?: string }>;
+        visibilityRules?: Array<{
+          id?: string;
+          toolId?: string;
+          triggerLabel?: string;
+          trigger?: string;
+          targetLabel?: string;
+          target?: string;
+        }>;
+      };
 
       if (Array.isArray(parsed.tools) && parsed.tools.length > 0) {
-        setTools(parsed.tools);
+        setTools(
+          parsed.tools.map((tool) => ({
+            id: tool.id || createClientId("tool"),
+            name: tool.name ?? "",
+            description: tool.description ?? "",
+          }))
+        );
       }
       if (Array.isArray(parsed.checklistItems) && parsed.checklistItems.length > 0) {
-        setChecklistItems(parsed.checklistItems);
+        setChecklistItems(
+          parsed.checklistItems.map((item) => ({
+            id: item.id || createClientId("item"),
+            title: item.label ?? item.title ?? "",
+            toolId: item.toolId || ALL_TOOLS_ID,
+          }))
+        );
       }
       if (Array.isArray(parsed.visibilityRules) && parsed.visibilityRules.length > 0) {
-        setVisibilityRules(parsed.visibilityRules);
+        setVisibilityRules(
+          parsed.visibilityRules.map((rule) => ({
+            id: rule.id || createClientId("rule"),
+            toolId: rule.toolId || ALL_TOOLS_ID,
+            trigger: rule.triggerLabel ?? rule.trigger ?? "",
+            target: rule.targetLabel ?? rule.target ?? "",
+          }))
+        );
       }
     } catch {
       // 保存データが壊れている場合は既定値のまま表示する
     }
   }, []);
 
-  const updateTool = (index: number, key: keyof Tool, value: string) => {
+  const updateTool = (
+    index: number,
+    key: keyof Pick<AdminToolForm, "name" | "description">,
+    value: string
+  ) => {
     setTools((prev) =>
       prev.map((tool, i) => (i === index ? { ...tool, [key]: value } : tool))
     );
   };
 
-  const updateChecklistItem = (index: number, value: string) => {
+  const updateChecklistItem = (
+    index: number,
+    key: keyof Pick<AdminChecklistItemForm, "title" | "toolId">,
+    value: string
+  ) => {
     setChecklistItems((prev) =>
-      prev.map((item, i) => (i === index ? { ...item, title: value } : item))
+      prev.map((item, i) => (i === index ? { ...item, [key]: value } : item))
     );
   };
 
-  const updateRule = (index: number, key: keyof VisibilityRule, value: string) => {
+  const updateRule = (
+    index: number,
+    key: keyof Pick<AdminRuleForm, "trigger" | "target" | "toolId">,
+    value: string
+  ) => {
     setVisibilityRules((prev) =>
       prev.map((rule, i) => (i === index ? { ...rule, [key]: value } : rule))
     );
   };
 
   const saveSettings = () => {
-    const settings: AdminSettings = {
-      tools,
-      checklistItems,
-      visibilityRules,
+    const normalizedTools: TemplateTool[] = tools
+      .map((tool) => ({
+        id: tool.id || createClientId("tool"),
+        name: tool.name.trim(),
+        description: tool.description.trim(),
+      }))
+      .filter((tool) => tool.name !== "");
+
+    const normalizedChecklistItems: TemplateChecklistItem[] = checklistItems
+      .map((item) => ({
+        id: item.id || createClientId("item"),
+        label: item.title.trim(),
+        toolId: item.toolId || ALL_TOOLS_ID,
+      }))
+      .filter((item) => item.label !== "");
+
+    const normalizedVisibilityRules: TemplateVisibilityRule[] = visibilityRules
+      .map((rule) => ({
+        id: rule.id || createClientId("rule"),
+        toolId: rule.toolId || ALL_TOOLS_ID,
+        triggerLabel: rule.trigger.trim(),
+        targetLabel: rule.target.trim(),
+      }))
+      .filter((rule) => rule.triggerLabel !== "" && rule.targetLabel !== "");
+
+    const settings: ChecklistTemplateSettings = {
+      tools: normalizedTools,
+      checklistItems: normalizedChecklistItems,
+      visibilityRules: normalizedVisibilityRules,
     };
 
-    localStorage.setItem(ADMIN_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+    localStorage.setItem(CHECKLIST_TEMPLATES_STORAGE_KEY, JSON.stringify(settings));
     setSaveMessage("設定を保存しました");
   };
 
@@ -117,7 +188,12 @@ export default function AdminPage() {
             </h2>
             <button
               type="button"
-              onClick={() => setTools((prev) => [...prev, { ...emptyTool }])}
+              onClick={() =>
+                setTools((prev) => [
+                  ...prev,
+                  { id: createClientId("tool"), name: "", description: "" },
+                ])
+              }
               className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
             >
               + 追加
@@ -154,7 +230,14 @@ export default function AdminPage() {
             <button
               type="button"
               onClick={() =>
-                setChecklistItems((prev) => [...prev, { ...emptyChecklistItem }])
+                setChecklistItems((prev) => [
+                  ...prev,
+                  {
+                    id: createClientId("item"),
+                    title: "",
+                    toolId: ALL_TOOLS_ID,
+                  },
+                ])
               }
               className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
             >
@@ -164,13 +247,31 @@ export default function AdminPage() {
 
           <div className="space-y-2">
             {checklistItems.map((item, index) => (
-              <div key={`checklist-${index}`} className="flex gap-2">
+              <div key={item.id} className="grid gap-2 sm:grid-cols-[1fr_180px_auto]">
                 <input
                   value={item.title}
-                  onChange={(event) => updateChecklistItem(index, event.target.value)}
+                  onChange={(event) =>
+                    updateChecklistItem(index, "title", event.target.value)
+                  }
                   placeholder="チェック項目名"
                   className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
                 />
+                <select
+                  value={item.toolId}
+                  onChange={(event) =>
+                    updateChecklistItem(index, "toolId", event.target.value)
+                  }
+                  className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                >
+                  <option value={ALL_TOOLS_ID}>全ツール共通</option>
+                  {tools
+                    .filter((tool) => tool.name.trim() !== "")
+                    .map((tool) => (
+                      <option key={tool.id} value={tool.id}>
+                        {tool.name}
+                      </option>
+                    ))}
+                </select>
                 <button
                   type="button"
                   onClick={() =>
@@ -196,7 +297,17 @@ export default function AdminPage() {
             </h2>
             <button
               type="button"
-              onClick={() => setVisibilityRules((prev) => [...prev, { ...emptyRule }])}
+              onClick={() =>
+                setVisibilityRules((prev) => [
+                  ...prev,
+                  {
+                    id: createClientId("rule"),
+                    toolId: ALL_TOOLS_ID,
+                    trigger: "",
+                    target: "",
+                  },
+                ])
+              }
               className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
             >
               + ルールを追加
@@ -209,7 +320,10 @@ export default function AdminPage() {
 
           <div className="space-y-3">
             {visibilityRules.map((rule, index) => (
-              <div key={`rule-${index}`} className="grid gap-2 sm:grid-cols-2">
+              <div
+                key={rule.id}
+                className="grid gap-2 sm:grid-cols-[1fr_1fr_180px]"
+              >
                 <input
                   value={rule.trigger}
                   onChange={(event) => updateRule(index, "trigger", event.target.value)}
@@ -222,6 +336,20 @@ export default function AdminPage() {
                   placeholder="表示対象（例：URL_B / 項目B）"
                   className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
                 />
+                <select
+                  value={rule.toolId}
+                  onChange={(event) => updateRule(index, "toolId", event.target.value)}
+                  className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                >
+                  <option value={ALL_TOOLS_ID}>全ツール共通</option>
+                  {tools
+                    .filter((tool) => tool.name.trim() !== "")
+                    .map((tool) => (
+                      <option key={tool.id} value={tool.id}>
+                        {tool.name}
+                      </option>
+                    ))}
+                </select>
               </div>
             ))}
           </div>
