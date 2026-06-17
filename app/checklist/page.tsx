@@ -18,26 +18,12 @@ import {
   visibilityRuleTemplates,
   type VisibilityRuleContent,
 } from "../checklist-visibility-rules";
-import {
-  parseSheetDestinations,
-  type SheetDestination,
-} from "../../lib/sheet-destinations";
 
 const SEND_MESSAGE_PLACEHOLDER = `・〇〇の対応が完了しました。テスト等のレイアウト崩れも修正済みです。
 ・△△について、ページ遷移周りで詰まっています。後ほどご相談させてください。
 
 サイト：https://example.com`;
-
-const clientDestinations = parseSheetDestinations(
-  process.env.NEXT_PUBLIC_SHEETS_DESTINATIONS_JSON
-);
-const fallbackDestinationId = process.env.NEXT_PUBLIC_DEFAULT_SPREADSHEET_ID;
-const sheetDestinations: SheetDestination[] =
-  clientDestinations.length > 0
-    ? clientDestinations
-    : fallbackDestinationId
-      ? [{ id: fallbackDestinationId, label: "Default Spreadsheet" }]
-      : [];
+const INTEGRATION_SETTINGS_STORAGE_KEY = "integration_settings";
 
 export default function ChecklistPage() {
   const searchParams = useSearchParams();
@@ -54,9 +40,8 @@ export default function ChecklistPage() {
   const [isFormatting, setIsFormatting] = useState(false);
   const [formatDone, setFormatDone] = useState(false);
   const [formatError, setFormatError] = useState("");
-  const [selectedDestinationId, setSelectedDestinationId] = useState(
-    sheetDestinations[0]?.id ?? ""
-  );
+  const [dataDestination, setDataDestination] = useState("未設定");
+  const [reportDestination, setReportDestination] = useState("未設定");
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState("");
   const [sendSuccess, setSendSuccess] = useState("");
@@ -129,6 +114,26 @@ export default function ChecklistPage() {
     }
   }, [requestedToolId]);
 
+  useEffect(() => {
+    const saved = localStorage.getItem(INTEGRATION_SETTINGS_STORAGE_KEY);
+    if (!saved) return;
+
+    try {
+      const parsed = JSON.parse(saved) as {
+        dataDestination?: string;
+        reportDestination?: string;
+      };
+      if (parsed.dataDestination) {
+        setDataDestination(parsed.dataDestination);
+      }
+      if (parsed.reportDestination) {
+        setReportDestination(parsed.reportDestination);
+      }
+    } catch {
+      // 保持データ破損時は既定値を利用
+    }
+  }, []);
+
   // 初回マウント時に当日分の保存内容を読み込む（テンプレートとは別キー）
   useEffect(() => {
     const key = getTodayProgressStorageKey(activeToolId);
@@ -192,8 +197,8 @@ export default function ChecklistPage() {
     }
   };
 
-  const handleSendReport = async () => {
-    if (!formatDone || isSending || !selectedDestinationId) {
+  const handleSaveToSheet = async () => {
+    if (!formatDone || isSending) {
       return;
     }
 
@@ -202,15 +207,23 @@ export default function ChecklistPage() {
     setSendSuccess("");
 
     try {
-      const response = await fetch("/api/send-report", {
+      const response = await fetch("/api/save-to-sheet", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          sentAt: new Date().toISOString(),
           message: formattedMessage,
           toolName: activeToolName,
-          destinationId: selectedDestinationId,
+          dataDestination,
+          reportDestination,
+          checklistStates: allItems.map((item) => ({
+            id: item.id,
+            label: item.label,
+            checked: !!checked[item.id],
+          })),
+          formattedMessage,
         }),
       });
 
@@ -219,7 +232,7 @@ export default function ChecklistPage() {
         throw new Error(data.message || data.error || "send_failed");
       }
 
-      setSendSuccess("LINE送信とスプレッドシート保存が完了しました。");
+      setSendSuccess("保存が完了しました。");
     } catch (error) {
       setSendError(
         error instanceof Error
@@ -403,29 +416,9 @@ export default function ChecklistPage() {
                   ) : null}
                 </div>
 
-                <div className="flex flex-col gap-2">
-                  <label
-                    htmlFor="destination-select"
-                    className="text-sm font-medium text-zinc-700 dark:text-zinc-300"
-                  >
-                    保存先スプレッドシート
-                  </label>
-                  <select
-                    id="destination-select"
-                    value={selectedDestinationId}
-                    onChange={(event) => setSelectedDestinationId(event.target.value)}
-                    className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
-                  >
-                    {sheetDestinations.length === 0 ? (
-                      <option value="">保存先が未設定です</option>
-                    ) : (
-                      sheetDestinations.map((destination) => (
-                        <option key={destination.id} value={destination.id}>
-                          {destination.label}
-                        </option>
-                      ))
-                    )}
-                  </select>
+                <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300">
+                  <p>保存先: {dataDestination}</p>
+                  <p>通知先: {reportDestination}</p>
                 </div>
 
                 <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-950">
@@ -439,11 +432,11 @@ export default function ChecklistPage() {
 
                 <button
                   type="button"
-                  onClick={handleSendReport}
-                  disabled={!formatDone || isSending || !selectedDestinationId}
+                  onClick={handleSaveToSheet}
+                  disabled={!formatDone || isSending}
                   className="w-fit rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
                 >
-                  {isSending ? "送信中..." : "送信する"}
+                  {isSending ? "スプレッドシートに保存中..." : "送信する"}
                 </button>
                 {sendError ? (
                   <p className="text-sm text-red-600 dark:text-red-400">{sendError}</p>
