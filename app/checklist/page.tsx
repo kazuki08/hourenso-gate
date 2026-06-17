@@ -34,6 +34,11 @@ export default function ChecklistPage() {
   const [activeToolId, setActiveToolId] = useState("default");
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [storageKey, setStorageKey] = useState<string | null>(null);
+  const [draftMessage, setDraftMessage] = useState("");
+  const [formattedMessage, setFormattedMessage] = useState(SEND_MESSAGE_PLACEHOLDER);
+  const [isFormatting, setIsFormatting] = useState(false);
+  const [formatDone, setFormatDone] = useState(false);
+  const [formatError, setFormatError] = useState("");
 
   useEffect(() => {
     const saved = localStorage.getItem(CHECKLIST_TEMPLATES_STORAGE_KEY);
@@ -132,6 +137,37 @@ export default function ChecklistPage() {
 
   const toggleItem = (id: string) => {
     setChecked((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleFormatMessage = async () => {
+    if (draftMessage.trim() === "" || isFormatting) {
+      return;
+    }
+
+    setIsFormatting(true);
+    setFormatError("");
+
+    try {
+      const response = await fetch("/api/format-message", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ message: draftMessage }),
+      });
+
+      if (!response.ok) {
+        throw new Error("failed_to_format");
+      }
+
+      const data = (await response.json()) as { formattedMessage?: string };
+      setFormattedMessage(data.formattedMessage || draftMessage);
+      setFormatDone(true);
+    } catch {
+      setFormatError("整形に失敗しました。しばらくして再試行してください。");
+    } finally {
+      setIsFormatting(false);
+    }
   };
 
   const allItems = categories.flatMap((category) => category.items);
@@ -260,9 +296,69 @@ export default function ChecklistPage() {
               送信文
             </h2>
             <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-              <pre className="whitespace-pre-wrap font-sans text-zinc-700 dark:text-zinc-300">
-                {SEND_MESSAGE_PLACEHOLDER}
-              </pre>
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-2">
+                  <label
+                    htmlFor="message-input"
+                    className="text-sm font-medium text-zinc-700 dark:text-zinc-300"
+                  >
+                    報連相メッセージ入力
+                  </label>
+                  <textarea
+                    id="message-input"
+                    value={draftMessage}
+                    onChange={(event) => {
+                      setDraftMessage(event.target.value);
+                      setFormatDone(false);
+                    }}
+                    placeholder="ここにメッセージを入力してください"
+                    rows={6}
+                    className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleFormatMessage}
+                    disabled={isFormatting || draftMessage.trim() === ""}
+                    className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                  >
+                    {isFormatting ? "AI整形中..." : "AIで整形する"}
+                  </button>
+                  <label className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+                    <input
+                      type="checkbox"
+                      checked={formatDone}
+                      readOnly
+                      className="h-4 w-4 rounded border-zinc-300 text-zinc-900 dark:border-zinc-600"
+                    />
+                    整形完了
+                  </label>
+                  {formatError ? (
+                    <span className="text-sm text-red-600 dark:text-red-400">
+                      {formatError}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-950">
+                  <p className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    整形結果
+                  </p>
+                  <pre className="whitespace-pre-wrap font-sans text-zinc-700 dark:text-zinc-300">
+                    {formattedMessage}
+                  </pre>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={!formatDone}
+                  className="w-fit rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+                >
+                  送信する
+                </button>
+              </div>
             </div>
           </section>
         ) : (
