@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
 
 type Tool = {
   name: string;
@@ -19,6 +20,13 @@ type VisibilityRule = {
 const emptyTool: Tool = { name: "", description: "" };
 const emptyChecklistItem: ChecklistItem = { title: "" };
 const emptyRule: VisibilityRule = { trigger: "", target: "" };
+const ADMIN_SETTINGS_STORAGE_KEY = "hourenso-gate-admin-settings-v1";
+
+type AdminSettings = {
+  tools: Tool[];
+  checklistItems: ChecklistItem[];
+  visibilityRules: VisibilityRule[];
+};
 
 export default function AdminPage() {
   const [tools, setTools] = useState<Tool[]>([{ ...emptyTool }]);
@@ -28,6 +36,30 @@ export default function AdminPage() {
   const [visibilityRules, setVisibilityRules] = useState<VisibilityRule[]>([
     { ...emptyRule },
   ]);
+  const [saveMessage, setSaveMessage] = useState("");
+
+  useEffect(() => {
+    const saved = localStorage.getItem(ADMIN_SETTINGS_STORAGE_KEY);
+    if (!saved) {
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(saved) as Partial<AdminSettings>;
+
+      if (Array.isArray(parsed.tools) && parsed.tools.length > 0) {
+        setTools(parsed.tools);
+      }
+      if (Array.isArray(parsed.checklistItems) && parsed.checklistItems.length > 0) {
+        setChecklistItems(parsed.checklistItems);
+      }
+      if (Array.isArray(parsed.visibilityRules) && parsed.visibilityRules.length > 0) {
+        setVisibilityRules(parsed.visibilityRules);
+      }
+    } catch {
+      // 保存データが壊れている場合は既定値のまま表示する
+    }
+  }, []);
 
   const updateTool = (index: number, key: keyof Tool, value: string) => {
     setTools((prev) =>
@@ -47,16 +79,35 @@ export default function AdminPage() {
     );
   };
 
+  const saveSettings = () => {
+    const settings: AdminSettings = {
+      tools,
+      checklistItems,
+      visibilityRules,
+    };
+
+    localStorage.setItem(ADMIN_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+    setSaveMessage("設定を保存しました");
+  };
+
   return (
     <div className="flex flex-1 justify-center bg-zinc-50 px-6 py-10 dark:bg-black">
       <main className="w-full max-w-5xl space-y-6">
-        <header className="space-y-2">
-          <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">
-            管理画面
-          </h1>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            SaaS化に向けた設定UIのモックです（まだ保存処理はありません）
-          </p>
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-2">
+            <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">
+              管理画面
+            </h1>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              SaaS化に向けた設定UIのモックです
+            </p>
+          </div>
+          <Link
+            href="/"
+            className="rounded-md border border-zinc-300 px-3 py-2 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+          >
+            ユーザー画面（チェックリスト）へ戻る
+          </Link>
         </header>
 
         <section className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
@@ -175,6 +226,21 @@ export default function AdminPage() {
             ))}
           </div>
         </section>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={saveSettings}
+            className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+          >
+            設定を保存
+          </button>
+          {saveMessage ? (
+            <span className="text-sm text-emerald-700 dark:text-emerald-400">
+              {saveMessage}
+            </span>
+          ) : null}
+        </div>
       </main>
     </div>
   );
