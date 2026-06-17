@@ -9,13 +9,21 @@ export default function Home() {
   return (
     <div className="flex flex-1 items-center justify-center bg-zinc-50 px-6 py-12 dark:bg-black">
       <main className="w-full max-w-4xl">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
-            ツールを選択
-          </h1>
-          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            利用する報連相ツールを選んでください（現在はモック表示です）
-          </p>
+        <div className="mb-8 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
+              ツールを選択
+            </h1>
+            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+              利用する報連相ツールを選んでください（現在はモック表示です）
+            </p>
+          </div>
+          <Link
+            href="/admin"
+            className="mt-1 text-xs text-zinc-500 underline-offset-2 hover:text-zinc-700 hover:underline dark:text-zinc-400 dark:hover:text-zinc-200"
+          >
+            ⚙️ 管理設定
+          </Link>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">

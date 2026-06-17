@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { checklistCategories } from "../checklist-data";
 
@@ -52,9 +53,17 @@ export default function ChecklistPage() {
   return (
     <div className="flex flex-col flex-1 items-center bg-zinc-50 dark:bg-black">
       <main className="flex flex-1 w-full max-w-2xl flex-col gap-8 py-12 px-6">
-        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
-          今日のチェックリスト
-        </h1>
+        <div className="flex items-start justify-between gap-4">
+          <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
+            今日のチェックリスト
+          </h1>
+          <Link
+            href="/admin"
+            className="mt-1 text-xs text-zinc-500 underline-offset-2 hover:text-zinc-700 hover:underline dark:text-zinc-400 dark:hover:text-zinc-200"
+          >
+            ⚙️ 管理設定
+          </Link>
+        </div>
 
         {checklistCategories.map((category) => (
           <section key={category.id} className="flex flex-col gap-3">
