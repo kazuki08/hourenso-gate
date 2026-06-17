@@ -17,7 +17,12 @@ type SaveToSheetBody = {
 };
 
 function getMissingEnvVars() {
-  const required = ["GOOGLE_CLIENT_EMAIL", "GOOGLE_PRIVATE_KEY"] as const;
+  const required = [
+    "GOOGLE_CLIENT_EMAIL",
+    "GOOGLE_PRIVATE_KEY",
+    "LINE_CHANNEL_ACCESS_TOKEN",
+    "LINE_USER_ID",
+  ] as const;
   const missing = required.filter((key) => !process.env[key]);
   const spreadsheetId =
     process.env.NEXT_PUBLIC_SPREADSHEET_ID ||
@@ -33,6 +38,25 @@ function formatChecklistStates(states: ChecklistState[]) {
   return states
     .map((item) => `${item.checked ? "ON" : "OFF"}: ${item.label}`)
     .join("\n");
+}
+
+async function sendLineMessage(message: string) {
+  const response = await fetch("https://api.line.me/v2/bot/message/push", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`,
+    },
+    body: JSON.stringify({
+      to: process.env.LINE_USER_ID,
+      messages: [{ type: "text", text: message }],
+    }),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`LINE push failed: ${response.status} ${detail}`);
+  }
 }
 
 export async function POST(request: Request) {
@@ -92,8 +116,25 @@ export async function POST(request: Request) {
       },
     });
 
-    return NextResponse.json({ ok: true });
+    try {
+      await sendLineMessage(formattedMessage);
+    } catch (lineError) {
+      console.error("LINE送信に失敗しました（スプレッドシート保存は成功）", lineError);
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "line_send_failed",
+          sheetSaved: true,
+          message:
+            lineError instanceof Error ? lineError.message : "Unknown LINE error",
+        },
+        { status: 502 }
+      );
+    }
+
+    return NextResponse.json({ ok: true, sheetSaved: true, lineSent: true });
   } catch (error) {
+    console.error("スプレッドシート保存処理に失敗しました", error);
     return NextResponse.json(
       {
         ok: false,
