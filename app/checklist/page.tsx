@@ -18,11 +18,26 @@ import {
   visibilityRuleTemplates,
   type VisibilityRuleContent,
 } from "../checklist-visibility-rules";
+import {
+  parseSheetDestinations,
+  type SheetDestination,
+} from "../../lib/sheet-destinations";
 
 const SEND_MESSAGE_PLACEHOLDER = `・〇〇の対応が完了しました。テスト等のレイアウト崩れも修正済みです。
 ・△△について、ページ遷移周りで詰まっています。後ほどご相談させてください。
 
 サイト：https://example.com`;
+
+const clientDestinations = parseSheetDestinations(
+  process.env.NEXT_PUBLIC_SHEETS_DESTINATIONS_JSON
+);
+const fallbackDestinationId = process.env.NEXT_PUBLIC_DEFAULT_SPREADSHEET_ID;
+const sheetDestinations: SheetDestination[] =
+  clientDestinations.length > 0
+    ? clientDestinations
+    : fallbackDestinationId
+      ? [{ id: fallbackDestinationId, label: "Default Spreadsheet" }]
+      : [];
 
 export default function ChecklistPage() {
   const searchParams = useSearchParams();
@@ -39,6 +54,12 @@ export default function ChecklistPage() {
   const [isFormatting, setIsFormatting] = useState(false);
   const [formatDone, setFormatDone] = useState(false);
   const [formatError, setFormatError] = useState("");
+  const [selectedDestinationId, setSelectedDestinationId] = useState(
+    sheetDestinations[0]?.id ?? ""
+  );
+  const [isSending, setIsSending] = useState(false);
+  const [sendError, setSendError] = useState("");
+  const [sendSuccess, setSendSuccess] = useState("");
 
   useEffect(() => {
     const saved = localStorage.getItem(CHECKLIST_TEMPLATES_STORAGE_KEY);
@@ -163,10 +184,50 @@ export default function ChecklistPage() {
       const data = (await response.json()) as { formattedMessage?: string };
       setFormattedMessage(data.formattedMessage || draftMessage);
       setFormatDone(true);
+      setSendError("");
     } catch {
       setFormatError("整形に失敗しました。しばらくして再試行してください。");
     } finally {
       setIsFormatting(false);
+    }
+  };
+
+  const handleSendReport = async () => {
+    if (!formatDone || isSending || !selectedDestinationId) {
+      return;
+    }
+
+    setIsSending(true);
+    setSendError("");
+    setSendSuccess("");
+
+    try {
+      const response = await fetch("/api/send-report", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: formattedMessage,
+          toolName: activeToolName,
+          destinationId: selectedDestinationId,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json()) as { message?: string; error?: string };
+        throw new Error(data.message || data.error || "send_failed");
+      }
+
+      setSendSuccess("LINE送信とスプレッドシート保存が完了しました。");
+    } catch (error) {
+      setSendError(
+        error instanceof Error
+          ? `送信に失敗しました: ${error.message}`
+          : "送信に失敗しました。"
+      );
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -342,6 +403,31 @@ export default function ChecklistPage() {
                   ) : null}
                 </div>
 
+                <div className="flex flex-col gap-2">
+                  <label
+                    htmlFor="destination-select"
+                    className="text-sm font-medium text-zinc-700 dark:text-zinc-300"
+                  >
+                    保存先スプレッドシート
+                  </label>
+                  <select
+                    id="destination-select"
+                    value={selectedDestinationId}
+                    onChange={(event) => setSelectedDestinationId(event.target.value)}
+                    className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                  >
+                    {sheetDestinations.length === 0 ? (
+                      <option value="">保存先が未設定です</option>
+                    ) : (
+                      sheetDestinations.map((destination) => (
+                        <option key={destination.id} value={destination.id}>
+                          {destination.label}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+
                 <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-950">
                   <p className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
                     整形結果
@@ -353,11 +439,20 @@ export default function ChecklistPage() {
 
                 <button
                   type="button"
-                  disabled={!formatDone}
+                  onClick={handleSendReport}
+                  disabled={!formatDone || isSending || !selectedDestinationId}
                   className="w-fit rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
                 >
-                  送信する
+                  {isSending ? "送信中..." : "送信する"}
                 </button>
+                {sendError ? (
+                  <p className="text-sm text-red-600 dark:text-red-400">{sendError}</p>
+                ) : null}
+                {sendSuccess ? (
+                  <p className="text-sm text-emerald-700 dark:text-emerald-400">
+                    {sendSuccess}
+                  </p>
+                ) : null}
               </div>
             </div>
           </section>
