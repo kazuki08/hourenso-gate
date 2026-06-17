@@ -72,10 +72,11 @@ export async function POST(request: Request) {
       process.env.NEXT_PUBLIC_SPREADSHEET_ID ||
       process.env.NEXT_PUBLIC_DEFAULT_SPREADSHEET_ID ||
       process.env.GOOGLE_SPREADSHEET_ID;
+    const sheetName = (process.env.GOOGLE_SHEET_NAME || "シート1").trim();
 
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: `${process.env.GOOGLE_SHEET_NAME || "Sheet1"}!A:F`,
+      range: `${sheetName}!A:F`,
       valueInputOption: "RAW",
       requestBody: {
         values: [
