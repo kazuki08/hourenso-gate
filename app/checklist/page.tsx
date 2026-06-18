@@ -390,32 +390,6 @@ export default function ChecklistPage() {
             管理画面
           </Link>
         </nav>
-
-        <div className="mt-8">
-          <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-            モード選択（自走度）
-          </h3>
-          <div className="mt-3 space-y-2">
-            {[
-              { id: "high", label: "高" },
-              { id: "medium", label: "中" },
-              { id: "low", label: "低" },
-            ].map((option) => (
-              <label key={option.id} className="flex items-center gap-2 text-sm">
-                <input
-                  type="radio"
-                  name="drive-mode"
-                  checked={mode === option.id}
-                  onChange={() =>
-                    handleModeChange(option.id as "high" | "medium" | "low")
-                  }
-                  className="h-4 w-4 border-zinc-300 text-zinc-900 dark:border-zinc-600"
-                />
-                <span className="text-zinc-700 dark:text-zinc-300">{option.label}</span>
-              </label>
-            ))}
-          </div>
-        </div>
       </aside>
 
       <main className="flex w-full flex-1 justify-center px-4 py-6 sm:px-6 sm:py-10 lg:ml-64 lg:py-12">
