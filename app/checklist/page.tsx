@@ -56,6 +56,7 @@ export default function ChecklistPage() {
   const [isMasterChecklistLoaded, setIsMasterChecklistLoaded] = useState(false);
   const [screeningDone, setScreeningDone] = useState(false);
   const [screeningWarning, setScreeningWarning] = useState("");
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const handleModeChange = (nextMode: "high" | "medium" | "low") => {
     setMode(nextMode);
@@ -376,7 +377,7 @@ export default function ChecklistPage() {
             href="/admin"
             className="rounded-md px-3 py-2 text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
           >
-            設定
+            管理画面
           </Link>
         </nav>
 
@@ -407,8 +408,34 @@ export default function ChecklistPage() {
         </div>
       </aside>
 
-      <main className="flex w-full flex-1 justify-center px-6 py-12 lg:ml-64">
-        <div className="flex w-full max-w-2xl flex-col gap-8">
+      <main className="flex w-full flex-1 justify-center px-4 py-6 sm:px-6 sm:py-10 lg:ml-64 lg:py-12">
+        <div className="flex w-full max-w-2xl flex-col gap-6 px-1 sm:gap-8 sm:px-0">
+        <div className="lg:hidden">
+          <button
+            type="button"
+            onClick={() => setIsMobileMenuOpen((prev) => !prev)}
+            className="inline-flex min-h-11 items-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+            aria-label="メニューを開く"
+          >
+            <span className="text-base">☰</span>
+            メニュー
+          </button>
+          {isMobileMenuOpen ? (
+            <div className="mt-2 rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+              <nav className="flex flex-col gap-2 text-sm">
+                <span className="rounded-md bg-zinc-100 px-3 py-2 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100">
+                  チェックリスト
+                </span>
+                <Link
+                  href="/admin"
+                  className="rounded-md px-3 py-2 text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                >
+                  管理画面
+                </Link>
+              </nav>
+            </div>
+          ) : null}
+        </div>
         <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
           <h2 className="mb-3 text-sm font-semibold text-zinc-800 dark:text-zinc-200">
             モード選択（自走度）
@@ -427,7 +454,7 @@ export default function ChecklistPage() {
                   onClick={() =>
                     handleModeChange(option.id as "high" | "medium" | "low")
                   }
-                  className={`rounded-md px-3 py-2 text-sm transition ${
+                  className={`min-h-11 rounded-md px-4 py-2 text-sm transition ${
                     isActive
                       ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                       : "border border-zinc-300 text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
@@ -457,7 +484,7 @@ export default function ChecklistPage() {
             href="/admin"
             className="mt-1 text-xs text-zinc-500 underline-offset-2 hover:text-zinc-700 hover:underline dark:text-zinc-400 dark:hover:text-zinc-200"
           >
-            ⚙️ 管理設定
+            ⚙️ 管理画面
           </Link>
         </div>
 
@@ -603,7 +630,7 @@ export default function ChecklistPage() {
                         type="button"
                         onClick={handleFormatMessage}
                         disabled={isFormatting || draftMessage.trim() === ""}
-                        className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                        className="min-h-11 rounded-md border border-zinc-300 px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
                       >
                         {mode === "medium"
                           ? isFormatting
@@ -653,7 +680,7 @@ export default function ChecklistPage() {
                         type="button"
                         onClick={handleSaveToSheet}
                         disabled={!isSendEnabled}
-                        className="w-fit rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+                        className="min-h-11 w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 sm:w-fit"
                       >
                         {isSending ? "スプレッドシートに保存中..." : "送信する"}
                       </button>
