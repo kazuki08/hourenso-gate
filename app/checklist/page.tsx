@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   checklistCategories as fallbackCategories,
@@ -35,8 +34,7 @@ function createChecklistItemId(categoryId: string) {
 }
 
 export default function ChecklistPage() {
-  const searchParams = useSearchParams();
-  const requestedToolId = searchParams.get("tool");
+  const [requestedToolId, setRequestedToolId] = useState<string | null>(null);
 
   const [categories, setCategories] = useState<ChecklistCategory[]>(fallbackCategories);
   const [rules, setRules] = useState<TemplateVisibilityRule[]>([]);
@@ -66,6 +64,11 @@ export default function ChecklistPage() {
       setScreeningWarning("");
     }
   };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setRequestedToolId(params.get("tool"));
+  }, []);
 
   useEffect(() => {
     const saved = localStorage.getItem(CHECKLIST_TEMPLATES_STORAGE_KEY);
