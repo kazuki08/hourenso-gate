@@ -23,7 +23,7 @@ function getMissingEnvVars() {
     "LINE_CHANNEL_ACCESS_TOKEN",
     "LINE_USER_ID",
   ] as const;
-  const missing = required.filter((key) => !process.env[key]);
+  const missing: string[] = required.filter((key) => !process.env[key]);
   const spreadsheetId =
     process.env.NEXT_PUBLIC_SPREADSHEET_ID ||
     process.env.NEXT_PUBLIC_DEFAULT_SPREADSHEET_ID ||

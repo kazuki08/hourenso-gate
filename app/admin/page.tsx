@@ -75,7 +75,7 @@ export default function AdminPage() {
         setChecklistItems(
           parsed.checklistItems.map((item) => ({
             id: item.id || createClientId("item"),
-            title: item.label ?? item.title ?? "",
+            title: item.label ?? "",
             toolId: item.toolId || ALL_TOOLS_ID,
           }))
         );
@@ -85,8 +85,8 @@ export default function AdminPage() {
           parsed.visibilityRules.map((rule) => ({
             id: rule.id || createClientId("rule"),
             toolId: rule.toolId || ALL_TOOLS_ID,
-            trigger: rule.triggerLabel ?? rule.trigger ?? "",
-            target: rule.targetLabel ?? rule.target ?? "",
+            trigger: rule.triggerLabel ?? "",
+            target: rule.targetLabel ?? "",
           }))
         );
       }
