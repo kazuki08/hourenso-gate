@@ -56,6 +56,16 @@ export default function ChecklistPage() {
   const [sendSuccess, setSendSuccess] = useState("");
   const [mode, setMode] = useState<"high" | "medium" | "low">("high");
   const [isMasterChecklistLoaded, setIsMasterChecklistLoaded] = useState(false);
+  const [screeningDone, setScreeningDone] = useState(false);
+  const [screeningWarning, setScreeningWarning] = useState("");
+
+  const handleModeChange = (nextMode: "high" | "medium" | "low") => {
+    setMode(nextMode);
+    if (nextMode !== "medium") {
+      setScreeningDone(false);
+      setScreeningWarning("");
+    }
+  };
 
   useEffect(() => {
     const saved = localStorage.getItem(CHECKLIST_TEMPLATES_STORAGE_KEY);
@@ -262,6 +272,14 @@ export default function ChecklistPage() {
       setFormattedMessage(data.formattedMessage || draftMessage);
       setFormatDone(true);
       setSendError("");
+      if (mode === "medium") {
+        const warning =
+          draftMessage.trim().length < 20
+            ? "AIスクリーニング警告: メッセージが短いため、抜け漏れがないか確認してください。"
+            : "";
+        setScreeningWarning(warning);
+        setScreeningDone(true);
+      }
     } catch {
       setFormatError("整形に失敗しました。しばらくして再試行してください。");
     } finally {
@@ -334,6 +352,9 @@ export default function ChecklistPage() {
 
   const remainingCount = allItems.filter((item) => !checked[item.id]).length;
   const allChecked = remainingCount === 0;
+  const isSendVisible = mode === "high" || (mode === "medium" && screeningDone);
+  const isSendEnabled =
+    mode === "high" ? !isSending : mode === "medium" ? screeningDone && !isSending : false;
 
   return (
     <div className="flex flex-1 bg-zinc-50 dark:bg-black">
@@ -371,7 +392,9 @@ export default function ChecklistPage() {
                   type="radio"
                   name="drive-mode"
                   checked={mode === option.id}
-                  onChange={() => setMode(option.id as "high" | "medium" | "low")}
+                  onChange={() =>
+                    handleModeChange(option.id as "high" | "medium" | "low")
+                  }
                   className="h-4 w-4 border-zinc-300 text-zinc-900 dark:border-zinc-600"
                 />
                 <span className="text-zinc-700 dark:text-zinc-300">{option.label}</span>
@@ -398,7 +421,9 @@ export default function ChecklistPage() {
                 <button
                   key={option.id}
                   type="button"
-                  onClick={() => setMode(option.id as "high" | "medium" | "low")}
+                  onClick={() =>
+                    handleModeChange(option.id as "high" | "medium" | "low")
+                  }
                   className={`rounded-md px-3 py-2 text-sm transition ${
                     isActive
                       ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
@@ -561,6 +586,8 @@ export default function ChecklistPage() {
                         onChange={(event) => {
                           setDraftMessage(event.target.value);
                           setFormatDone(false);
+                      setScreeningDone(false);
+                      setScreeningWarning("");
                         }}
                         placeholder="ここにメッセージを入力してください"
                         rows={6}
@@ -575,7 +602,13 @@ export default function ChecklistPage() {
                         disabled={isFormatting || draftMessage.trim() === ""}
                         className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
                       >
-                        {isFormatting ? "AI整形中..." : "AIで整形する"}
+                        {mode === "medium"
+                          ? isFormatting
+                            ? "AIスクリーニング中..."
+                            : "AIスクリーニング"
+                          : isFormatting
+                            ? "AI整形中..."
+                            : "AIで整形する"}
                       </button>
                       <label className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
                         <input
@@ -592,6 +625,11 @@ export default function ChecklistPage() {
                         </span>
                       ) : null}
                     </div>
+                    {mode === "medium" && screeningWarning ? (
+                      <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+                        {screeningWarning}
+                      </div>
+                    ) : null}
 
                     <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300">
                       <p>保存先: {dataDestination}</p>
@@ -607,14 +645,16 @@ export default function ChecklistPage() {
                       </pre>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={handleSaveToSheet}
-                      disabled={!formatDone || isSending}
-                      className="w-fit rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
-                    >
-                      {isSending ? "スプレッドシートに保存中..." : "送信する"}
-                    </button>
+                    {isSendVisible ? (
+                      <button
+                        type="button"
+                        onClick={handleSaveToSheet}
+                        disabled={!isSendEnabled}
+                        className="w-fit rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+                      >
+                        {isSending ? "スプレッドシートに保存中..." : "送信する"}
+                      </button>
+                    ) : null}
                     {sendError ? (
                       <p className="text-sm text-red-600 dark:text-red-400">{sendError}</p>
                     ) : null}
