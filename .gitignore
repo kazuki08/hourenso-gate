@@ -32,9 +32,19 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+.envrc
 
 # vercel
 .vercel
+
+# local agent / editor settings
+.claude/
+
+# credential-like JSON files
+credentials*.json
+service-account*.json
+*secret*.json
+*token*.json
 
 # typescript
 *.tsbuildinfo
