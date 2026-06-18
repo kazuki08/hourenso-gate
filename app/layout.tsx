@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
+import { ClerkProvider } from "@clerk/nextjs";
 import { Geist, Geist_Mono } from "next/font/google";
+import Link from "next/link";
+import { AuthControls } from "./auth-controls";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -27,7 +30,22 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <ClerkProvider>
+          <header className="border-b border-zinc-200 bg-white/90 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90">
+            <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3">
+              <Link
+                href="/"
+                className="text-sm font-semibold text-zinc-800 dark:text-zinc-100"
+              >
+                Hourenso Gate
+              </Link>
+              <AuthControls />
+            </div>
+          </header>
+          <div className="flex flex-1 flex-col">{children}</div>
+        </ClerkProvider>
+      </body>
     </html>
   );
 }

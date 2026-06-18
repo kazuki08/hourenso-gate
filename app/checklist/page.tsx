@@ -10,6 +10,7 @@ import {
   ALL_TOOLS_ID,
   CHECKLIST_TEMPLATES_STORAGE_KEY,
   getTodayProgressStorageKey,
+  LINE_DESTINATION_SETTINGS_STORAGE_KEY,
   type ChecklistTemplateSettings,
   type TemplateVisibilityRule,
 } from "../template-storage";
@@ -57,6 +58,7 @@ export default function ChecklistPage() {
   const [screeningDone, setScreeningDone] = useState(false);
   const [screeningWarning, setScreeningWarning] = useState("");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [lineRecipientType, setLineRecipientType] = useState<"user" | "group">("user");
 
   const handleModeChange = (nextMode: "high" | "medium" | "low") => {
     setMode(nextMode);
@@ -189,6 +191,13 @@ export default function ChecklistPage() {
     }
   }, []);
 
+  useEffect(() => {
+    const savedType = localStorage.getItem(LINE_DESTINATION_SETTINGS_STORAGE_KEY);
+    if (savedType === "user" || savedType === "group") {
+      setLineRecipientType(savedType);
+    }
+  }, []);
+
   // 初回マウント時に当日分の保存内容を読み込む（テンプレートとは別キー）
   useEffect(() => {
     const key = getTodayProgressStorageKey(activeToolId);
@@ -318,6 +327,7 @@ export default function ChecklistPage() {
             checked: !!checked[item.id],
           })),
           formattedMessage,
+          lineRecipientType,
         }),
       });
 

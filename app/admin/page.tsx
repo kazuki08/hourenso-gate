@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useUser } from "@clerk/nextjs";
 import {
   ALL_TOOLS_ID,
   CHECKLIST_TEMPLATES_STORAGE_KEY,
   LEGACY_ADMIN_SETTINGS_STORAGE_KEY,
+  LINE_DESTINATION_SETTINGS_STORAGE_KEY,
   type ChecklistTemplateSettings,
   createClientId,
   type TemplateChecklistItem,
@@ -26,7 +28,19 @@ type AdminRuleForm = {
   target: string;
 };
 
+type LineLinkStatus =
+  | {
+      linked: false;
+    }
+  | {
+      linked: true;
+      lineId: string;
+      recipientType: "user" | "group";
+      linkedAt: string;
+    };
+
 export default function AdminPage() {
+  const { user } = useUser();
   const [tools, setTools] = useState<AdminToolForm[]>([
     { id: createClientId("tool"), name: "", description: "" },
   ]);
@@ -42,6 +56,14 @@ export default function AdminPage() {
     },
   ]);
   const [saveMessage, setSaveMessage] = useState("");
+  const [lineRecipientType, setLineRecipientType] = useState<"user" | "group">("user");
+  const [lineLinkStatus, setLineLinkStatus] = useState<LineLinkStatus>({ linked: false });
+  const [lineLinkMessage, setLineLinkMessage] = useState("");
+  const lineAddFriendUrl = process.env.NEXT_PUBLIC_LINE_ADD_FRIEND_URL || "";
+  const lineQrImageUrl = process.env.NEXT_PUBLIC_LINE_QR_IMAGE_URL || "";
+  const webhookSetupUrl = user
+    ? `/api/webhook/line?clerkUserId=${encodeURIComponent(user.id)}`
+    : "/api/webhook/line?clerkUserId=<YOUR_CLERK_USER_ID>";
 
   useEffect(() => {
     const templateJson =
@@ -93,6 +115,54 @@ export default function AdminPage() {
     } catch {
       // 保存データが壊れている場合は既定値のまま表示する
     }
+  }, []);
+
+  useEffect(() => {
+    const savedType = localStorage.getItem(LINE_DESTINATION_SETTINGS_STORAGE_KEY);
+    if (savedType === "user" || savedType === "group") {
+      setLineRecipientType(savedType);
+    }
+  }, []);
+
+  useEffect(() => {
+    const loadLineLinkStatus = async () => {
+      try {
+        const response = await fetch("/api/line-link-status");
+        const data = (await response.json()) as
+          | { ok: true; linked: false }
+          | {
+              ok: true;
+              linked: true;
+              lineId: string;
+              recipientType: "user" | "group";
+              linkedAt: string;
+            }
+          | { ok: false; error?: string; message?: string };
+
+        if (!response.ok || !data.ok) {
+          setLineLinkMessage("LINE連携状況の取得に失敗しました");
+          setLineLinkStatus({ linked: false });
+          return;
+        }
+
+        if (!data.linked) {
+          setLineLinkStatus({ linked: false });
+          return;
+        }
+
+        setLineLinkStatus({
+          linked: true,
+          lineId: data.lineId,
+          recipientType: data.recipientType,
+          linkedAt: data.linkedAt,
+        });
+      } catch {
+        setLineLinkMessage("LINE連携状況の取得に失敗しました");
+        setLineLinkStatus({ linked: false });
+      }
+    };
+
+    void loadLineLinkStatus();
   }, []);
 
   const updateTool = (
@@ -158,6 +228,7 @@ export default function AdminPage() {
     };
 
     localStorage.setItem(CHECKLIST_TEMPLATES_STORAGE_KEY, JSON.stringify(settings));
+    localStorage.setItem(LINE_DESTINATION_SETTINGS_STORAGE_KEY, lineRecipientType);
     setSaveMessage("設定を保存しました");
   };
 
@@ -352,6 +423,100 @@ export default function AdminPage() {
                 </select>
               </div>
             ))}
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
+          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+            LINE送信先設定
+          </h2>
+          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+            個人宛（上司など）か、LINEグループ宛かを選択します。
+          </p>
+
+          <div className="mt-4 flex flex-wrap gap-4">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="line-recipient-type"
+                value="user"
+                checked={lineRecipientType === "user"}
+                onChange={() => setLineRecipientType("user")}
+                className="h-4 w-4 border-zinc-300 text-zinc-900 dark:border-zinc-600"
+              />
+              個人宛に送る
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="line-recipient-type"
+                value="group"
+                checked={lineRecipientType === "group"}
+                onChange={() => setLineRecipientType("group")}
+                className="h-4 w-4 border-zinc-300 text-zinc-900 dark:border-zinc-600"
+              />
+              グループ宛に送る
+            </label>
+          </div>
+
+          <div className="mt-4 rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm dark:border-zinc-700 dark:bg-zinc-950">
+            <p className="font-medium text-zinc-800 dark:text-zinc-100">現在の紐付け状態</p>
+            {lineLinkStatus.linked &&
+            lineLinkStatus.recipientType === lineRecipientType ? (
+              <div className="mt-1 space-y-1 text-zinc-700 dark:text-zinc-300">
+                <p className="text-emerald-700 dark:text-emerald-400">設定済み</p>
+                <p>ID: {lineLinkStatus.lineId}</p>
+                <p>
+                  種別: {lineLinkStatus.recipientType === "user" ? "個人ID" : "グループID"}
+                </p>
+              </div>
+            ) : (
+              <p className="mt-1 text-amber-700 dark:text-amber-300">未設定</p>
+            )}
+            {lineLinkMessage ? (
+              <p className="mt-2 text-red-600 dark:text-red-400">{lineLinkMessage}</p>
+            ) : null}
+          </div>
+
+          <div className="mt-4 rounded-md border border-zinc-200 p-3 text-sm dark:border-zinc-700">
+            <p className="font-medium text-zinc-800 dark:text-zinc-100">連携導線（QR/リンク）</p>
+            <p className="mt-2 text-zinc-600 dark:text-zinc-400">
+              Botを友だち追加（個人）またはグループへ招待した後、WebhookでIDが自動登録されます。
+            </p>
+            <div className="mt-3 space-y-2">
+              {lineAddFriendUrl ? (
+                <a
+                  href={lineAddFriendUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                >
+                  友だち追加リンクを開く
+                </a>
+              ) : (
+                <p className="text-zinc-500 dark:text-zinc-400">
+                  `NEXT_PUBLIC_LINE_ADD_FRIEND_URL` を設定するとリンクが表示されます。
+                </p>
+              )}
+              {lineQrImageUrl ? (
+                <div>
+                  <img
+                    src={lineQrImageUrl}
+                    alt="LINE友だち追加QRコード"
+                    className="h-36 w-36 rounded border border-zinc-200 object-contain dark:border-zinc-700"
+                  />
+                </div>
+              ) : (
+                <p className="text-zinc-500 dark:text-zinc-400">
+                  `NEXT_PUBLIC_LINE_QR_IMAGE_URL` を設定するとQRコード画像を表示できます。
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-md border border-dashed border-zinc-300 p-3 text-xs text-zinc-600 dark:border-zinc-700 dark:text-zinc-400">
+            <p>Webhook URL（Clerkユーザー紐付け用）</p>
+            <code className="mt-1 block break-all">{webhookSetupUrl}</code>
           </div>
         </section>
 

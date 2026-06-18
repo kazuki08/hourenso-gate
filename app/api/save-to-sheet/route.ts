@@ -1,5 +1,7 @@
+import { auth } from "@clerk/nextjs/server";
 import { google } from "googleapis";
 import { NextResponse } from "next/server";
+import { getLatestLineLinkRecord, type LineRecipientType } from "@/lib/line-link-store";
 
 type ChecklistState = {
   id: string;
@@ -14,6 +16,7 @@ type SaveToSheetBody = {
   reportDestination?: string;
   checklistStates?: ChecklistState[];
   formattedMessage?: string;
+  lineRecipientType?: LineRecipientType;
 };
 
 function getMissingEnvVars() {
@@ -21,7 +24,6 @@ function getMissingEnvVars() {
     "GOOGLE_CLIENT_EMAIL",
     "GOOGLE_PRIVATE_KEY",
     "LINE_CHANNEL_ACCESS_TOKEN",
-    "LINE_USER_ID",
   ] as const;
   const missing: string[] = required.filter((key) => !process.env[key]);
   const spreadsheetId =
@@ -40,7 +42,7 @@ function formatChecklistStates(states: ChecklistState[]) {
     .join("\n");
 }
 
-async function sendLineMessage(message: string) {
+async function sendLineMessage(message: string, to: string) {
   const response = await fetch("https://api.line.me/v2/bot/message/push", {
     method: "POST",
     headers: {
@@ -48,7 +50,7 @@ async function sendLineMessage(message: string) {
       Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`,
     },
     body: JSON.stringify({
-      to: process.env.LINE_USER_ID,
+      to,
       messages: [{ type: "text", text: message }],
     }),
   });
@@ -70,11 +72,14 @@ export async function POST(request: Request) {
     }
 
     const body = (await request.json()) as SaveToSheetBody;
+    const { userId } = await auth();
     const sentAt = body.sentAt || new Date().toISOString();
     const toolName = body.toolName?.trim() || "未指定";
     const dataDestination = body.dataDestination?.trim() || "未設定";
     const reportDestination = body.reportDestination?.trim() || "未設定";
     const formattedMessage = body.formattedMessage?.trim() || "";
+    const lineRecipientType: LineRecipientType =
+      body.lineRecipientType === "group" ? "group" : "user";
     const checklistStates = Array.isArray(body.checklistStates)
       ? body.checklistStates
       : [];
@@ -86,12 +91,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const auth = new google.auth.JWT({
+    const googleAuth = new google.auth.JWT({
       email: process.env.GOOGLE_CLIENT_EMAIL,
       key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
       scopes: ["https://www.googleapis.com/auth/spreadsheets"],
     });
-    const sheets = google.sheets({ version: "v4", auth });
+    const sheets = google.sheets({ version: "v4", auth: googleAuth });
     const spreadsheetId =
       process.env.NEXT_PUBLIC_SPREADSHEET_ID ||
       process.env.NEXT_PUBLIC_DEFAULT_SPREADSHEET_ID ||
@@ -116,8 +121,29 @@ export async function POST(request: Request) {
       },
     });
 
+    let lineTargetId = process.env.LINE_USER_ID || "";
+    if (userId) {
+      const linkedRecord = await getLatestLineLinkRecord(userId);
+      if (linkedRecord && linkedRecord.recipientType === lineRecipientType) {
+        lineTargetId = linkedRecord.lineId;
+      }
+    }
+
+    if (!lineTargetId) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "line_target_not_linked",
+          sheetSaved: true,
+          message:
+            "LINE送信先が未設定です。管理画面で送信先を選択し、Bot友だち追加またはグループ招待を完了してください。",
+        },
+        { status: 400 }
+      );
+    }
+
     try {
-      await sendLineMessage(formattedMessage);
+      await sendLineMessage(formattedMessage, lineTargetId);
     } catch (lineError) {
       console.error("LINE送信に失敗しました（スプレッドシート保存は成功）", lineError);
       return NextResponse.json(

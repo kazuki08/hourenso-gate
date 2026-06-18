@@ -1,6 +1,7 @@
 export const CHECKLIST_TEMPLATES_STORAGE_KEY = "checklist_templates";
 export const LEGACY_ADMIN_SETTINGS_STORAGE_KEY = "hourenso-gate-admin-settings-v1";
 export const USER_TODAY_PROGRESS_STORAGE_KEY_PREFIX = "user_today_progress";
+export const LINE_DESTINATION_SETTINGS_STORAGE_KEY = "line_destination_settings";
 
 export const ALL_TOOLS_ID = "all";
 

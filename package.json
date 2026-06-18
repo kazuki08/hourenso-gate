@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@clerk/nextjs": "^7.5.5",
     "googleapis": "^173.0.0",
     "next": "16.2.9",
     "react": "19.2.4",
