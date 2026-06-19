@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useUser } from "@clerk/nextjs";
 import {
   checklistCategories as fallbackCategories,
   type ChecklistCategory,
@@ -15,7 +16,6 @@ import {
   type TemplateVisibilityRule,
 } from "../template-storage";
 import {
-  visibilityRuleTemplates,
   type VisibilityRuleContent,
 } from "../checklist-visibility-rules";
 
@@ -58,6 +58,7 @@ function renderWithAutoLinks(text: string) {
 }
 
 export default function ChecklistPage() {
+  const { user } = useUser();
   const [requestedToolId, setRequestedToolId] = useState<string | null>(null);
 
   const [categories, setCategories] = useState<ChecklistCategory[]>(fallbackCategories);
@@ -392,21 +393,15 @@ export default function ChecklistPage() {
       title: rule.targetType === "message" ? "返信文" : rule.targetLabel,
       targetType: rule.targetType === "message" ? "message" : "extra",
     }));
-  const revealedContents = visibilityRuleTemplates.reduce<VisibilityRuleContent[]>(
-    (acc, rule) => {
-      if (!checked[rule.triggerItemId]) {
-        return acc;
-      }
-      return [...acc, ...rule.contents];
-    },
-    []
-  );
-
   const remainingCount = allItems.filter((item) => !checked[item.id]).length;
   const allChecked = remainingCount === 0;
   const isSendVisible = mode === "high" || (mode === "medium" && screeningDone);
   const isSendEnabled =
     mode === "high" ? !isSending : mode === "medium" ? screeningDone && !isSending : false;
+  const signedInEmail =
+    user?.primaryEmailAddress?.emailAddress ||
+    user?.emailAddresses?.[0]?.emailAddress ||
+    "ログインユーザー";
 
   return (
     <div className="flex flex-1 bg-zinc-50 dark:bg-black">
@@ -499,7 +494,7 @@ export default function ChecklistPage() {
               今日のチェックリスト
             </h1>
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              選択ツール: {activeToolName}
+              選択ツール: {dataDestination}
             </p>
           </div>
           <Link
@@ -521,7 +516,7 @@ export default function ChecklistPage() {
             {categories.map((category) => (
               <section key={category.id} className="flex flex-col gap-3">
                 <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">
-                  {category.title}
+                  {signedInEmail}のチェック項目
                 </h2>
                 <ul className="flex flex-col gap-2 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
                   {category.items.map((item) => (
@@ -562,40 +557,36 @@ export default function ChecklistPage() {
               </section>
             ))}
 
-            <section className="flex flex-col gap-3">
-              <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">
-                必要なURL・追加要素
-              </h2>
-              <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-                {revealedContents.length > 0 ? (
-                  <ul className="space-y-2">
-                    {revealedContents.map((content) => (
-                      <li key={content.id} className="text-zinc-700 dark:text-zinc-300">
-                        <span className="mr-2 text-sm font-medium text-zinc-500 dark:text-zinc-400">
-                          {content.label}
-                        </span>
-                        {content.type === "url" ? (
-                          <a
-                            href={content.value}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-sm text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
-                          >
-                            {content.value}
-                          </a>
-                        ) : (
-                          <span className="text-sm">{content.value}</span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-zinc-500 dark:text-zinc-400">
-                    特定のチェックをONにすると、必要なURLや追加要素がここに表示されます。
-                  </p>
-                )}
-              </div>
-            </section>
+            {rules.length > 0 ? (
+              <section className="flex flex-col gap-3">
+                <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">
+                  ルール解除で追加された項目
+                </h2>
+                <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+                  {unlockedRuleItems.length > 0 ? (
+                    <ul className="space-y-2">
+                      {unlockedRuleItems.map((item) => (
+                        <li
+                          key={item.id}
+                          className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300"
+                        >
+                          <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                            {item.targetType === "message"
+                              ? "返信文"
+                              : "自由入力項目"}
+                          </span>
+                          <span>{renderWithAutoLinks(item.title)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-zinc-500 dark:text-zinc-400">
+                      条件を満たすと、ここに追加項目が下から積み上がって表示されます。
+                    </p>
+                  )}
+                </div>
+              </section>
+            ) : null}
 
             {allChecked ? (
               <section className="flex flex-col gap-3">
@@ -705,36 +696,6 @@ export default function ChecklistPage() {
               </section>
             )}
 
-            {rules.length > 0 ? (
-              <section className="flex flex-col gap-3">
-                <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">
-                  ルール解除で追加された項目
-                </h2>
-                <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-                  {unlockedRuleItems.length > 0 ? (
-                    <ul className="space-y-2">
-                      {unlockedRuleItems.map((item) => (
-                        <li
-                          key={item.id}
-                          className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300"
-                        >
-                          <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-                            {item.targetType === "message"
-                              ? "返信文"
-                              : "自由入力項目"}
-                          </span>
-                          <span>{renderWithAutoLinks(item.title)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-zinc-500 dark:text-zinc-400">
-                      条件を満たすと、ここに追加項目が下から積み上がって表示されます。
-                    </p>
-                  )}
-                </div>
-              </section>
-            ) : null}
           </>
         )}
         </div>
