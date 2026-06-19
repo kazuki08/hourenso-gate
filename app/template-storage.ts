@@ -24,6 +24,7 @@ export type TemplateVisibilityRule = {
   // backward compatibility for legacy saved data
   triggerLabel?: string;
   targetLabel: string;
+  targetType?: "extra" | "message";
 };
 
 export type ChecklistTemplateSettings = {

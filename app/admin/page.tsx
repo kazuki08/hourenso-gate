@@ -26,6 +26,7 @@ type AdminRuleForm = {
   id: string;
   toolId: string;
   triggerLabels: string[];
+  targetType: "extra" | "message";
   target: string;
 };
 
@@ -61,6 +62,7 @@ export default function AdminPage() {
       id: createClientId("rule"),
       toolId: ALL_TOOLS_ID,
       triggerLabels: [],
+      targetType: "extra",
       target: "",
     },
   ]);
@@ -93,6 +95,7 @@ export default function AdminPage() {
           trigger?: string;
           targetLabel?: string;
           target?: string;
+          targetType?: "extra" | "message";
         }>;
       };
 
@@ -124,7 +127,8 @@ export default function AdminPage() {
               : rule.triggerLabel?.trim()
                 ? [rule.triggerLabel.trim()]
                   : [],
-            target: rule.targetLabel ?? "",
+            targetType: rule.targetType === "message" ? "message" : "extra",
+            target: rule.targetType === "message" ? "返信文" : (rule.targetLabel ?? ""),
           }))
         );
       }
@@ -267,11 +271,27 @@ export default function AdminPage() {
 
   const updateRule = (
     index: number,
-    key: keyof Pick<AdminRuleForm, "target" | "toolId">,
+    key: keyof Pick<AdminRuleForm, "target" | "toolId" | "targetType">,
     value: string
   ) => {
     setVisibilityRules((prev) =>
       prev.map((rule, i) => (i === index ? { ...rule, [key]: value } : rule))
+    );
+  };
+
+  const updateRuleTargetType = (index: number, targetType: "extra" | "message") => {
+    setVisibilityRules((prev) =>
+      prev.map((rule, i) => {
+        if (i !== index) return rule;
+        if (targetType === "message") {
+          return { ...rule, targetType, target: "返信文" };
+        }
+        return {
+          ...rule,
+          targetType,
+          target: rule.target === "返信文" ? "" : rule.target,
+        };
+      })
     );
   };
 
@@ -285,6 +305,27 @@ export default function AdminPage() {
         return { ...rule, triggerLabels: next };
       })
     );
+  };
+
+  const addRuleAfter = (index: number) => {
+    setVisibilityRules((prev) => {
+      const next = [...prev];
+      next.splice(index + 1, 0, {
+        id: createClientId("rule"),
+        toolId: ALL_TOOLS_ID,
+        triggerLabels: [],
+        targetType: "extra",
+        target: "",
+      });
+      return next;
+    });
+  };
+
+  const removeRule = (index: number) => {
+    setVisibilityRules((prev) => {
+      if (prev.length <= 1) return prev;
+      return prev.filter((_, ruleIndex) => ruleIndex !== index);
+    });
   };
 
   const saveSettings = () => {
@@ -309,7 +350,8 @@ export default function AdminPage() {
         id: rule.id || createClientId("rule"),
         toolId: rule.toolId || ALL_TOOLS_ID,
         triggerLabels: rule.triggerLabels.map((label) => label.trim()).filter(Boolean),
-        targetLabel: rule.target.trim(),
+        targetLabel: rule.targetType === "message" ? "返信文" : rule.target.trim(),
+        targetType: rule.targetType,
       }))
       .filter((rule) => rule.triggerLabels.length > 0 && rule.targetLabel !== "");
 
@@ -403,6 +445,7 @@ export default function AdminPage() {
                     id: createClientId("rule"),
                     toolId: ALL_TOOLS_ID,
                     triggerLabels: [],
+                    targetType: "extra",
                     target: "",
                   },
                 ])
@@ -414,15 +457,12 @@ export default function AdminPage() {
           </div>
 
           <p className="mb-3 text-sm text-zinc-600 dark:text-zinc-400">
-            追加済みのチェックリスト項目から、トリガーを複数選択して表示対象を決めてください。
+            表示対象は「返信文（固定）」または「自由入力」を選択できます。自由入力を選ぶとタイトル入力欄が表示されます。
           </p>
 
           <div className="space-y-3">
             {visibilityRules.map((rule, index) => (
-              <div
-                key={rule.id}
-                className="grid gap-2 sm:grid-cols-[1fr_1fr_180px]"
-              >
+              <div key={rule.id} className="grid gap-2 sm:grid-cols-[1fr_180px_180px_auto]">
                 <div className="rounded-md border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-950">
                   <p className="text-xs text-zinc-500 dark:text-zinc-400">
                     トリガー項目（複数選択）
@@ -455,33 +495,49 @@ export default function AdminPage() {
                   </div>
                 </div>
                 <select
-                  value={rule.target}
-                  onChange={(event) => updateRule(index, "target", event.target.value)}
+                  value={rule.targetType}
+                  onChange={(event) =>
+                    updateRuleTargetType(index, event.target.value as "extra" | "message")
+                  }
                   className="appearance-none rounded-md border border-zinc-300 px-3 py-2 pr-10 text-sm dark:border-zinc-700 dark:bg-zinc-950"
                   style={selectChevronStyle}
                 >
-                  <option value="">表示対象を選択</option>
-                  {checklistSelectOptions.map((label) => (
-                    <option key={`target-${rule.id}-${label}`} value={label}>
-                      {label}
-                    </option>
-                  ))}
+                  <option value="message">返信文（固定）</option>
+                  <option value="extra">自由入力</option>
                 </select>
-                <select
-                  value={rule.toolId}
-                  onChange={(event) => updateRule(index, "toolId", event.target.value)}
-                  className="appearance-none rounded-md border border-zinc-300 px-3 py-2 pr-10 text-sm dark:border-zinc-700 dark:bg-zinc-950"
-                  style={selectChevronStyle}
-                >
-                  <option value={ALL_TOOLS_ID}>全ツール共通</option>
-                  {tools
-                    .filter((tool) => tool.name.trim() !== "")
-                    .map((tool) => (
-                      <option key={tool.id} value={tool.id}>
-                        {tool.name}
-                      </option>
-                    ))}
-                </select>
+                {rule.targetType === "extra" ? (
+                  <input
+                    value={rule.target}
+                    onChange={(event) => updateRule(index, "target", event.target.value)}
+                    placeholder="表示タイトル（例：必要なURL・追加要素）"
+                    className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                  />
+                ) : (
+                  <input
+                    value="返信文"
+                    readOnly
+                    className="rounded-md border border-zinc-300 bg-zinc-100 px-3 py-2 text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                  />
+                )}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => addRuleAfter(index)}
+                    aria-label="ルールを追加"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded border border-zinc-300 text-sm text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                  >
+                    +
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeRule(index)}
+                    aria-label="ルールを削除"
+                    disabled={visibilityRules.length <= 1}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded border border-zinc-300 text-sm text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                  >
+                    -
+                  </button>
+                </div>
               </div>
             ))}
             {checklistSelectOptions.length === 0 ? (
@@ -491,6 +547,21 @@ export default function AdminPage() {
             ) : null}
           </div>
         </section>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={saveSettings}
+            className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+          >
+            設定を保存
+          </button>
+          {saveMessage ? (
+            <span className="text-sm text-emerald-700 dark:text-emerald-400">
+              {saveMessage}
+            </span>
+          ) : null}
+        </div>
 
         <section className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
           <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
@@ -586,20 +657,6 @@ export default function AdminPage() {
           </div>
         </section>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={saveSettings}
-            className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-          >
-            設定を保存
-          </button>
-          {saveMessage ? (
-            <span className="text-sm text-emerald-700 dark:text-emerald-400">
-              {saveMessage}
-            </span>
-          ) : null}
-        </div>
         </div>
       </main>
     </div>

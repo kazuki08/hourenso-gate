@@ -34,6 +34,29 @@ function createChecklistItemId(categoryId: string) {
   return `${categoryId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+function renderWithAutoLinks(text: string) {
+  const splitRegex = /(https?:\/\/[^\s]+)/g;
+  const chunks = text.split(splitRegex);
+  const isUrl = /^https?:\/\/[^\s]+$/;
+
+  return chunks.map((chunk, index) => {
+    if (isUrl.test(chunk)) {
+      return (
+        <a
+          key={`${chunk}-${index}`}
+          href={chunk}
+          target="_blank"
+          rel="noreferrer"
+          className="text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+        >
+          {chunk}
+        </a>
+      );
+    }
+    return <span key={`${chunk}-${index}`}>{chunk}</span>;
+  });
+}
+
 export default function ChecklistPage() {
   const [requestedToolId, setRequestedToolId] = useState<string | null>(null);
 
@@ -349,7 +372,7 @@ export default function ChecklistPage() {
   };
 
   const allItems = categories.flatMap((category) => category.items);
-  const visibleTargets = rules
+  const unlockedRuleItems = rules
     .filter((rule) => {
       const triggerLabels =
         Array.isArray(rule.triggerLabels) && rule.triggerLabels.length > 0
@@ -364,7 +387,11 @@ export default function ChecklistPage() {
         allItems.some((item) => item.label === triggerLabel && checked[item.id])
       );
     })
-    .map((rule) => rule.targetLabel);
+    .map((rule) => ({
+      id: rule.id,
+      title: rule.targetType === "message" ? "返信文" : rule.targetLabel,
+      targetType: rule.targetType === "message" ? "message" : "extra",
+    }));
   const revealedContents = visibilityRuleTemplates.reduce<VisibilityRuleContent[]>(
     (acc, rule) => {
       if (!checked[rule.triggerItemId]) {
@@ -535,27 +562,6 @@ export default function ChecklistPage() {
               </section>
             ))}
 
-            {rules.length > 0 ? (
-              <section className="flex flex-col gap-3">
-                <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">
-                  表示ルールで出現する項目
-                </h2>
-                <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-                  {visibleTargets.length > 0 ? (
-                    <ul className="list-disc pl-5 text-zinc-700 dark:text-zinc-300">
-                      {visibleTargets.map((target, index) => (
-                        <li key={`${target}-${index}`}>{target}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-zinc-500 dark:text-zinc-400">
-                      条件を満たすとここにURL/追加項目が表示されます
-                    </p>
-                  )}
-                </div>
-              </section>
-            ) : null}
-
             <section className="flex flex-col gap-3">
               <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">
                 必要なURL・追加要素
@@ -698,6 +704,37 @@ export default function ChecklistPage() {
                 </div>
               </section>
             )}
+
+            {rules.length > 0 ? (
+              <section className="flex flex-col gap-3">
+                <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">
+                  ルール解除で追加された項目
+                </h2>
+                <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+                  {unlockedRuleItems.length > 0 ? (
+                    <ul className="space-y-2">
+                      {unlockedRuleItems.map((item) => (
+                        <li
+                          key={item.id}
+                          className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300"
+                        >
+                          <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                            {item.targetType === "message"
+                              ? "返信文"
+                              : "自由入力項目"}
+                          </span>
+                          <span>{renderWithAutoLinks(item.title)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-zinc-500 dark:text-zinc-400">
+                      条件を満たすと、ここに追加項目が下から積み上がって表示されます。
+                    </p>
+                  )}
+                </div>
+              </section>
+            ) : null}
           </>
         )}
         </div>
