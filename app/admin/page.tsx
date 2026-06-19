@@ -8,6 +8,7 @@ import {
   CHECKLIST_TEMPLATES_STORAGE_KEY,
   LEGACY_ADMIN_SETTINGS_STORAGE_KEY,
   LINE_DESTINATION_SETTINGS_STORAGE_KEY,
+  USER_TODAY_PROGRESS_STORAGE_KEY_PREFIX,
   type ChecklistTemplateSettings,
   createClientId,
   type TemplateChecklistItem,
@@ -40,6 +41,14 @@ type LineLinkStatus =
     };
 
 export default function AdminPage() {
+  const selectChevronStyle = {
+    backgroundImage:
+      "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%236b7280' stroke-width='1.5'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E\")",
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: "right 0.75rem center",
+    backgroundSize: "0.9rem",
+  } as const;
+
   const { user } = useUser();
   const [tools, setTools] = useState<AdminToolForm[]>([
     { id: createClientId("tool"), name: "", description: "" },
@@ -60,6 +69,7 @@ export default function AdminPage() {
   const [lineLinkStatus, setLineLinkStatus] = useState<LineLinkStatus>({ linked: false });
   const [lineLinkMessage, setLineLinkMessage] = useState("");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [checklistSelectOptions, setChecklistSelectOptions] = useState<string[]>([]);
   const lineAddFriendUrl = process.env.NEXT_PUBLIC_LINE_ADD_FRIEND_URL || "";
   const lineQrImageUrl = process.env.NEXT_PUBLIC_LINE_QR_IMAGE_URL || "";
   const webhookSetupUrl = user
@@ -116,6 +126,90 @@ export default function AdminPage() {
     } catch {
       // 保存データが壊れている場合は既定値のまま表示する
     }
+  }, []);
+
+  useEffect(() => {
+    const loadChecklistOptions = () => {
+      const optionSet = new Set<string>();
+
+      const templateJson =
+        localStorage.getItem(CHECKLIST_TEMPLATES_STORAGE_KEY) ??
+        localStorage.getItem(LEGACY_ADMIN_SETTINGS_STORAGE_KEY);
+      if (templateJson) {
+        try {
+          const parsed = JSON.parse(templateJson) as Partial<ChecklistTemplateSettings>;
+          if (Array.isArray(parsed.checklistItems)) {
+            parsed.checklistItems.forEach((item) => {
+              const label = item.label?.trim();
+              if (label) {
+                optionSet.add(label);
+              }
+            });
+          }
+        } catch {
+          // 破損データは無視
+        }
+      }
+
+      // チェックリスト画面で増減した「実運用の項目」も反映
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        if (!key || !key.startsWith("checklist_master_edit-")) {
+          continue;
+        }
+
+        const raw = localStorage.getItem(key);
+        if (!raw) {
+          continue;
+        }
+
+        try {
+          const categories = JSON.parse(raw) as Array<{
+            items?: Array<{ label?: string }>;
+          }>;
+          categories.forEach((category) => {
+            category.items?.forEach((item) => {
+              const label = item.label?.trim();
+              if (label) {
+                optionSet.add(label);
+              }
+            });
+          });
+        } catch {
+          // 破損データは無視
+        }
+      }
+
+      const nextOptions = Array.from(optionSet);
+      setChecklistSelectOptions((prev) =>
+        prev.length === nextOptions.length &&
+        prev.every((value, index) => value === nextOptions[index])
+          ? prev
+          : nextOptions
+      );
+    };
+
+    loadChecklistOptions();
+
+    const onStorage = (event: StorageEvent) => {
+      if (!event.key) return;
+      if (
+        event.key.startsWith("checklist_master_edit-") ||
+        event.key.startsWith(USER_TODAY_PROGRESS_STORAGE_KEY_PREFIX) ||
+        event.key === CHECKLIST_TEMPLATES_STORAGE_KEY ||
+        event.key === LEGACY_ADMIN_SETTINGS_STORAGE_KEY
+      ) {
+        loadChecklistOptions();
+      }
+    };
+
+    window.addEventListener("storage", onStorage);
+    const intervalId = window.setInterval(loadChecklistOptions, 1500);
+
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.clearInterval(intervalId);
+    };
   }, []);
 
   useEffect(() => {
@@ -303,7 +397,7 @@ export default function AdminPage() {
           </div>
 
           <p className="mb-3 text-sm text-zinc-600 dark:text-zinc-400">
-            例：「Aをチェックしたら、B項目やURLを表示する」
+            追加済みのチェックリスト項目から、トリガーと表示対象を選択してください。
           </p>
 
           <div className="space-y-3">
@@ -312,22 +406,37 @@ export default function AdminPage() {
                 key={rule.id}
                 className="grid gap-2 sm:grid-cols-[1fr_1fr_180px]"
               >
-                <input
+                <select
                   value={rule.trigger}
                   onChange={(event) => updateRule(index, "trigger", event.target.value)}
-                  placeholder="トリガー項目（例：Aをチェック）"
-                  className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
-                />
-                <input
+                  className="appearance-none rounded-md border border-zinc-300 px-3 py-2 pr-10 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                  style={selectChevronStyle}
+                >
+                  <option value="">トリガー項目を選択</option>
+                  {checklistSelectOptions.map((label) => (
+                    <option key={`trigger-${rule.id}-${label}`} value={label}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                <select
                   value={rule.target}
                   onChange={(event) => updateRule(index, "target", event.target.value)}
-                  placeholder="表示対象（例：URL_B / 項目B）"
-                  className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
-                />
+                  className="appearance-none rounded-md border border-zinc-300 px-3 py-2 pr-10 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                  style={selectChevronStyle}
+                >
+                  <option value="">表示対象を選択</option>
+                  {checklistSelectOptions.map((label) => (
+                    <option key={`target-${rule.id}-${label}`} value={label}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
                 <select
                   value={rule.toolId}
                   onChange={(event) => updateRule(index, "toolId", event.target.value)}
-                  className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                  className="appearance-none rounded-md border border-zinc-300 px-3 py-2 pr-10 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                  style={selectChevronStyle}
                 >
                   <option value={ALL_TOOLS_ID}>全ツール共通</option>
                   {tools
@@ -340,6 +449,11 @@ export default function AdminPage() {
                 </select>
               </div>
             ))}
+            {checklistSelectOptions.length === 0 ? (
+              <p className="text-sm text-amber-700 dark:text-amber-300">
+                チェックリスト項目が見つかりません。チェックリスト画面で項目を追加するとここに反映されます。
+              </p>
+            ) : null}
           </div>
         </section>
 
