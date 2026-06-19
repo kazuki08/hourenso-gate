@@ -496,6 +496,9 @@ export default function ChecklistPage() {
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
               選択ツール: {dataDestination}
             </p>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              {signedInEmail}のチェック項目
+            </p>
           </div>
           <Link
             href="/admin"
@@ -516,7 +519,7 @@ export default function ChecklistPage() {
             {categories.map((category) => (
               <section key={category.id} className="flex flex-col gap-3">
                 <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">
-                  {signedInEmail}のチェック項目
+                  {category.title}
                 </h2>
                 <ul className="flex flex-col gap-2 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
                   {category.items.map((item) => (
