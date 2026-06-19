@@ -350,9 +350,20 @@ export default function ChecklistPage() {
 
   const allItems = categories.flatMap((category) => category.items);
   const visibleTargets = rules
-    .filter((rule) =>
-      allItems.some((item) => item.label === rule.triggerLabel && checked[item.id])
-    )
+    .filter((rule) => {
+      const triggerLabels =
+        Array.isArray(rule.triggerLabels) && rule.triggerLabels.length > 0
+          ? rule.triggerLabels
+          : rule.triggerLabel
+            ? [rule.triggerLabel]
+            : [];
+      if (triggerLabels.length === 0) {
+        return false;
+      }
+      return triggerLabels.every((triggerLabel) =>
+        allItems.some((item) => item.label === triggerLabel && checked[item.id])
+      );
+    })
     .map((rule) => rule.targetLabel);
   const revealedContents = visibilityRuleTemplates.reduce<VisibilityRuleContent[]>(
     (acc, rule) => {

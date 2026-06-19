@@ -25,7 +25,7 @@ type AdminChecklistItemForm = {
 type AdminRuleForm = {
   id: string;
   toolId: string;
-  trigger: string;
+  triggerLabels: string[];
   target: string;
 };
 
@@ -60,7 +60,7 @@ export default function AdminPage() {
     {
       id: createClientId("rule"),
       toolId: ALL_TOOLS_ID,
-      trigger: "",
+      triggerLabels: [],
       target: "",
     },
   ]);
@@ -88,6 +88,7 @@ export default function AdminPage() {
         visibilityRules?: Array<{
           id?: string;
           toolId?: string;
+          triggerLabels?: string[];
           triggerLabel?: string;
           trigger?: string;
           targetLabel?: string;
@@ -118,7 +119,11 @@ export default function AdminPage() {
           parsed.visibilityRules.map((rule) => ({
             id: rule.id || createClientId("rule"),
             toolId: rule.toolId || ALL_TOOLS_ID,
-            trigger: rule.triggerLabel ?? "",
+            triggerLabels: Array.isArray(rule.triggerLabels)
+              ? rule.triggerLabels.filter((label) => label.trim() !== "")
+              : rule.triggerLabel?.trim()
+                ? [rule.triggerLabel.trim()]
+                  : [],
             target: rule.targetLabel ?? "",
           }))
         );
@@ -262,11 +267,23 @@ export default function AdminPage() {
 
   const updateRule = (
     index: number,
-    key: keyof Pick<AdminRuleForm, "trigger" | "target" | "toolId">,
+    key: keyof Pick<AdminRuleForm, "target" | "toolId">,
     value: string
   ) => {
     setVisibilityRules((prev) =>
       prev.map((rule, i) => (i === index ? { ...rule, [key]: value } : rule))
+    );
+  };
+
+  const toggleRuleTrigger = (index: number, label: string, checked: boolean) => {
+    setVisibilityRules((prev) =>
+      prev.map((rule, i) => {
+        if (i !== index) return rule;
+        const next = checked
+          ? Array.from(new Set([...rule.triggerLabels, label]))
+          : rule.triggerLabels.filter((triggerLabel) => triggerLabel !== label);
+        return { ...rule, triggerLabels: next };
+      })
     );
   };
 
@@ -291,10 +308,10 @@ export default function AdminPage() {
       .map((rule) => ({
         id: rule.id || createClientId("rule"),
         toolId: rule.toolId || ALL_TOOLS_ID,
-        triggerLabel: rule.trigger.trim(),
+        triggerLabels: rule.triggerLabels.map((label) => label.trim()).filter(Boolean),
         targetLabel: rule.target.trim(),
       }))
-      .filter((rule) => rule.triggerLabel !== "" && rule.targetLabel !== "");
+      .filter((rule) => rule.triggerLabels.length > 0 && rule.targetLabel !== "");
 
     const settings: ChecklistTemplateSettings = {
       tools: normalizedTools,
@@ -385,7 +402,7 @@ export default function AdminPage() {
                   {
                     id: createClientId("rule"),
                     toolId: ALL_TOOLS_ID,
-                    trigger: "",
+                    triggerLabels: [],
                     target: "",
                   },
                 ])
@@ -397,7 +414,7 @@ export default function AdminPage() {
           </div>
 
           <p className="mb-3 text-sm text-zinc-600 dark:text-zinc-400">
-            追加済みのチェックリスト項目から、トリガーと表示対象を選択してください。
+            追加済みのチェックリスト項目から、トリガーを複数選択して表示対象を決めてください。
           </p>
 
           <div className="space-y-3">
@@ -406,19 +423,37 @@ export default function AdminPage() {
                 key={rule.id}
                 className="grid gap-2 sm:grid-cols-[1fr_1fr_180px]"
               >
-                <select
-                  value={rule.trigger}
-                  onChange={(event) => updateRule(index, "trigger", event.target.value)}
-                  className="appearance-none rounded-md border border-zinc-300 px-3 py-2 pr-10 text-sm dark:border-zinc-700 dark:bg-zinc-950"
-                  style={selectChevronStyle}
-                >
-                  <option value="">トリガー項目を選択</option>
-                  {checklistSelectOptions.map((label) => (
-                    <option key={`trigger-${rule.id}-${label}`} value={label}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
+                <div className="rounded-md border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-950">
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    トリガー項目（複数選択）
+                  </p>
+                  <div className="mt-2 max-h-32 space-y-1 overflow-y-auto pr-1">
+                    {checklistSelectOptions.map((label) => {
+                      const checked = rule.triggerLabels.includes(label);
+                      return (
+                        <label
+                          key={`trigger-${rule.id}-${label}`}
+                          className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(event) =>
+                              toggleRuleTrigger(index, label, event.target.checked)
+                            }
+                            className="h-4 w-4 rounded border-zinc-300 text-zinc-900 dark:border-zinc-600"
+                          />
+                          <span>{label}</span>
+                        </label>
+                      );
+                    })}
+                    {checklistSelectOptions.length === 0 ? (
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                        選択可能な項目がありません
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
                 <select
                   value={rule.target}
                   onChange={(event) => updateRule(index, "target", event.target.value)}

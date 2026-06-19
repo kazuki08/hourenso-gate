@@ -20,7 +20,9 @@ export type TemplateChecklistItem = {
 export type TemplateVisibilityRule = {
   id: string;
   toolId: string;
-  triggerLabel: string;
+  triggerLabels: string[];
+  // backward compatibility for legacy saved data
+  triggerLabel?: string;
   targetLabel: string;
 };
 
