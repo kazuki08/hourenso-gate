@@ -372,7 +372,7 @@ export default function ChecklistPage() {
 
   return (
     <div className="flex flex-1 bg-zinc-50 dark:bg-black">
-      <aside className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-64 lg:flex-col lg:border-r lg:border-zinc-200 lg:bg-white lg:p-6 dark:lg:border-zinc-800 dark:lg:bg-zinc-950">
+      <aside className="hidden lg:fixed lg:bottom-0 lg:left-0 lg:top-16 lg:flex lg:h-[calc(100vh-4rem)] lg:w-64 lg:flex-col lg:border-r lg:border-zinc-200 lg:bg-white lg:p-6 dark:lg:border-zinc-800 dark:lg:bg-zinc-950">
         <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
           ナビゲーション
         </h2>
