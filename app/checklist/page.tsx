@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useUser } from "@clerk/nextjs";
 import {
   checklistCategories as fallbackCategories,
   type ChecklistCategory,
@@ -15,9 +14,6 @@ import {
   type ChecklistTemplateSettings,
   type TemplateVisibilityRule,
 } from "../template-storage";
-import {
-  type VisibilityRuleContent,
-} from "../checklist-visibility-rules";
 
 const SEND_MESSAGE_PLACEHOLDER = `・〇〇の対応が完了しました。テスト等のレイアウト崩れも修正済みです。
 ・△△について、ページ遷移周りで詰まっています。後ほどご相談させてください。
@@ -25,24 +21,9 @@ const SEND_MESSAGE_PLACEHOLDER = `・〇〇の対応が完了しました。テ�
 サイト：https://example.com`;
 const INTEGRATION_SETTINGS_STORAGE_KEY = "integration_settings";
 const MASTER_CHECKLIST_STORAGE_PREFIX = "checklist_master_edit";
-const CATEGORY_SELECTION_STORAGE_PREFIX = "category_selection";
-const MAJOR_CATEGORY_LABELS_STORAGE_PREFIX = "major_category_labels";
 
 function getMasterChecklistStorageKey(toolId: string) {
   return `${MASTER_CHECKLIST_STORAGE_PREFIX}-${toolId}`;
-}
-
-function getCategorySelectionStorageKey(toolId: string) {
-  return `${CATEGORY_SELECTION_STORAGE_PREFIX}-${getTodayProgressStorageKey(toolId)}`;
-}
-
-function getMajorCategoryLabelsStorageKey(toolId: string) {
-  return `${MAJOR_CATEGORY_LABELS_STORAGE_PREFIX}-${toolId}`;
-}
-
-function normalizeMajorLabel(label: string, index: number) {
-  void index;
-  return label.replace(/のチェック項目/g, "").trim();
 }
 
 function createChecklistItemId(categoryId: string) {
@@ -77,7 +58,6 @@ function renderWithAutoLinks(text: string) {
 }
 
 export default function ChecklistPage() {
-  const { user } = useUser();
   const [requestedToolId, setRequestedToolId] = useState<string | null>(null);
 
   const [categories, setCategories] = useState<ChecklistCategory[]>(fallbackCategories);
@@ -102,12 +82,6 @@ export default function ChecklistPage() {
   const [screeningWarning, setScreeningWarning] = useState("");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [lineRecipientType, setLineRecipientType] = useState<"user" | "group">("user");
-  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
-  const [majorCategoryLabels, setMajorCategoryLabels] = useState<string[]>([
-    "業務開始前",
-    "タスク着手前",
-    "報連相前",
-  ]);
 
   const handleModeChange = (nextMode: "high" | "medium" | "low") => {
     setMode(nextMode);
@@ -221,74 +195,6 @@ export default function ChecklistPage() {
   }, [activeToolId, categories, isMasterChecklistLoaded]);
 
   useEffect(() => {
-    if (!activeToolId || categories.length === 0) return;
-
-    const key = getCategorySelectionStorageKey(activeToolId);
-    const saved = localStorage.getItem(key);
-    if (!saved) {
-      setSelectedCategoryIds([]);
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(saved) as string[];
-      const categoryIds = categories.map((category) => category.id);
-      const validIds = parsed.filter((id) => categoryIds.includes(id));
-      setSelectedCategoryIds(validIds);
-    } catch {
-      setSelectedCategoryIds([]);
-    }
-  }, [activeToolId, categories]);
-
-  useEffect(() => {
-    if (!activeToolId) return;
-    localStorage.setItem(
-      getCategorySelectionStorageKey(activeToolId),
-      JSON.stringify(selectedCategoryIds)
-    );
-  }, [activeToolId, selectedCategoryIds]);
-
-  useEffect(() => {
-    if (!activeToolId) return;
-    const saved = localStorage.getItem(getMajorCategoryLabelsStorageKey(activeToolId));
-    if (!saved) return;
-    try {
-      const parsed = JSON.parse(saved) as string[];
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        setMajorCategoryLabels(parsed.map((label, index) => normalizeMajorLabel(label, index)));
-      }
-    } catch {
-      // 破損時は既定値を利用
-    }
-  }, [activeToolId]);
-
-  useEffect(() => {
-    if (categories.length === 0) return;
-    setMajorCategoryLabels((prev) => {
-      const normalized = prev.map((label, index) => normalizeMajorLabel(label, index));
-      if (normalized.length === categories.length) {
-        return normalized;
-      }
-      if (normalized.length > categories.length) {
-        return normalized.slice(0, categories.length);
-      }
-      const next = [...normalized];
-      while (next.length < categories.length) {
-        next.push("");
-      }
-      return next;
-    });
-  }, [categories]);
-
-  useEffect(() => {
-    if (!activeToolId) return;
-    localStorage.setItem(
-      getMajorCategoryLabelsStorageKey(activeToolId),
-      JSON.stringify(majorCategoryLabels)
-    );
-  }, [activeToolId, majorCategoryLabels]);
-
-  useEffect(() => {
     const saved = localStorage.getItem(INTEGRATION_SETTINGS_STORAGE_KEY);
     if (!saved) return;
 
@@ -377,15 +283,28 @@ export default function ChecklistPage() {
     );
   };
 
+  const updateChecklistItemLabel = (categoryId: string, itemId: string, value: string) => {
+    setCategories((prev) =>
+      prev.map((category) => {
+        if (category.id !== categoryId) return category;
+        return {
+          ...category,
+          items: category.items.map((item) =>
+            item.id === itemId ? { ...item, label: value } : item
+          ),
+        };
+      })
+    );
+  };
+
   const updateMajorCategoryLabel = (index: number, value: string) => {
-    setMajorCategoryLabels((prev) => prev.map((label, i) => (i === index ? value : label)));
     setCategories((prev) =>
       prev.map((category, i) => (i === index ? { ...category, title: value } : category))
     );
   };
 
   const addMajorCategoryAfter = (index: number) => {
-    const nextLabel = `大項目 ${majorCategoryLabels.length + 1}`;
+    const nextLabel = `大項目 ${categories.length + 1}`;
     const newCategoryId = createChecklistCategoryId();
     const newCategory: ChecklistCategory = {
       id: newCategoryId,
@@ -393,30 +312,19 @@ export default function ChecklistPage() {
       items: [{ id: createChecklistItemId(newCategoryId), label: "新しいチェック項目" }],
     };
 
-    setMajorCategoryLabels((prev) => {
-      const next = [...prev];
-      next.splice(index + 1, 0, nextLabel);
-      return next;
-    });
     setCategories((prev) => {
       const next = [...prev];
       next.splice(index + 1, 0, newCategory);
       return next;
     });
-    setSelectedCategoryIds((prev) => [...prev, newCategoryId]);
   };
 
   const removeMajorCategory = (index: number) => {
-    if (majorCategoryLabels.length <= 1 || categories.length <= 1) {
+    if (categories.length <= 1) {
       return;
     }
 
-    const removingCategoryId = categories[index]?.id;
-    setMajorCategoryLabels((prev) => prev.filter((_, i) => i !== index));
     setCategories((prev) => prev.filter((_, i) => i !== index));
-    if (removingCategoryId) {
-      setSelectedCategoryIds((prev) => prev.filter((id) => id !== removingCategoryId));
-    }
   };
 
   const handleFormatMessage = async () => {
@@ -646,63 +554,16 @@ export default function ChecklistPage() {
             <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
-                  大項目選択（0件から選択可）
+                  大項目
                 </h2>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedCategoryIds([])}
-                    className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                  >
-                    すべて解除
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSelectedCategoryIds(categories.map((category) => category.id))
-                    }
-                    className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                  >
-                    すべて選択
-                  </button>
-                </div>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {categories.map((category, index) => {
-                  const isSelected = selectedCategoryIds.includes(category.id);
-                  return (
-                    <label
-                      key={`category-${category.id}`}
-                      className={`inline-flex cursor-pointer items-center rounded-md border px-3 py-1.5 text-sm ${
-                        isSelected
-                          ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
-                          : "border-zinc-300 text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={(event) =>
-                          setSelectedCategoryIds((prev) =>
-                            event.target.checked
-                              ? [...prev, category.id]
-                              : prev.filter((id) => id !== category.id)
-                          )
-                        }
-                        className="hidden"
-                      />
-                      {majorCategoryLabels[index]?.trim() || `大項目 ${index + 1}`}
-                    </label>
-                  );
-                })}
               </div>
 
               <div className="mt-4 space-y-2 rounded-md border border-zinc-200 p-3 dark:border-zinc-700">
                 <p className="text-xs text-zinc-500 dark:text-zinc-400">大項目（記述式）</p>
-                {majorCategoryLabels.map((label, index) => (
+                {categories.map((category, index) => (
                   <div key={`major-label-${index}`} className="flex items-center gap-2">
                     <input
-                      value={label}
+                      value={category.title}
                       onChange={(event) => updateMajorCategoryLabel(index, event.target.value)}
                       className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
                     />
@@ -718,7 +579,7 @@ export default function ChecklistPage() {
                       type="button"
                       onClick={() => removeMajorCategory(index)}
                       aria-label="大項目を削除"
-                      disabled={majorCategoryLabels.length <= 1 || categories.length <= 1}
+                      disabled={categories.length <= 1}
                       className="inline-flex h-8 w-8 items-center justify-center rounded border border-zinc-300 text-sm text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
                     >
                       -
@@ -731,23 +592,27 @@ export default function ChecklistPage() {
             {categories.map((category, index) => (
               <section key={category.id} className="flex flex-col gap-3">
                 <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">
-                  {majorCategoryLabels[index]?.trim() || `大項目 ${index + 1}`}
+                  {category.title.trim() || `大項目 ${index + 1}`}
                 </h2>
                 <ul className="flex flex-col gap-2 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
                   {category.items.map((item) => (
                     <li key={item.id}>
                       <div className="flex items-center gap-2">
-                        <label className="flex flex-1 cursor-pointer items-center gap-3">
+                        <div className="flex flex-1 items-center gap-3">
                           <input
                             type="checkbox"
                             checked={!!checked[item.id]}
                             onChange={() => toggleItem(item.id)}
                             className="h-5 w-5 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-500 dark:border-zinc-600"
                           />
-                          <span className="text-zinc-700 dark:text-zinc-300">
-                            {item.label}
-                          </span>
-                        </label>
+                          <input
+                            value={item.label}
+                            onChange={(event) =>
+                              updateChecklistItemLabel(category.id, item.id, event.target.value)
+                            }
+                            className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300"
+                          />
+                        </div>
                         <button
                           type="button"
                           onClick={() => addChecklistItem(category.id, item.id)}
