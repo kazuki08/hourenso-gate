@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useUser } from "@clerk/nextjs";
+import { AppMobileNavigation, AppSidebarNavigation } from "../app-navigation";
 import {
   checklistCategories as fallbackCategories,
   type ChecklistCategory,
@@ -58,6 +60,7 @@ function renderWithAutoLinks(text: string) {
 }
 
 export default function ChecklistPage() {
+  const { user } = useUser();
   const [requestedToolId, setRequestedToolId] = useState<string | null>(null);
 
   const [categories, setCategories] = useState<ChecklistCategory[]>(fallbackCategories);
@@ -80,7 +83,6 @@ export default function ChecklistPage() {
   const [isMasterChecklistLoaded, setIsMasterChecklistLoaded] = useState(false);
   const [screeningDone, setScreeningDone] = useState(false);
   const [screeningWarning, setScreeningWarning] = useState("");
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [lineRecipientType, setLineRecipientType] = useState<"user" | "group">("user");
 
   const handleModeChange = (nextMode: "high" | "medium" | "low") => {
@@ -386,6 +388,8 @@ export default function ChecklistPage() {
           sentAt: new Date().toISOString(),
           message: formattedMessage,
           toolName: activeToolName,
+          senderName,
+          mode,
           dataDestination,
           reportDestination,
           checklistStates: allItems.map((item) => ({
@@ -416,6 +420,10 @@ export default function ChecklistPage() {
   };
 
   const allItems = categories.flatMap((category) => category.items);
+  const senderName =
+    user?.fullName?.trim() ||
+    user?.primaryEmailAddress?.emailAddress?.trim() ||
+    "未ログインユーザー";
   const unlockedRuleItems = rules
     .filter((rule) => {
       const triggerLabels =
@@ -443,54 +451,11 @@ export default function ChecklistPage() {
     mode === "high" ? !isSending : mode === "medium" ? screeningDone && !isSending : false;
   return (
     <div className="flex flex-1 bg-zinc-50 dark:bg-black">
-      <aside className="hidden lg:fixed lg:bottom-0 lg:left-0 lg:top-16 lg:flex lg:h-[calc(100vh-4rem)] lg:w-64 lg:flex-col lg:border-r lg:border-zinc-200 lg:bg-white lg:p-6 dark:lg:border-zinc-800 dark:lg:bg-zinc-950">
-        <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-          ナビゲーション
-        </h2>
-        <nav className="mt-4 flex flex-col gap-2 text-sm">
-          <button
-            type="button"
-            className="rounded-md bg-zinc-100 px-3 py-2 text-left text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100"
-          >
-            チェックリスト
-          </button>
-          <Link
-            href="/admin"
-            className="rounded-md px-3 py-2 text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
-          >
-            管理画面
-          </Link>
-        </nav>
-      </aside>
+      <AppSidebarNavigation activePage="checklist" />
 
       <main className="flex w-full flex-1 justify-center px-4 py-6 sm:px-6 sm:py-10 lg:ml-64 lg:py-12">
         <div className="flex w-full max-w-2xl flex-col gap-6 px-1 sm:gap-8 sm:px-0">
-        <div className="lg:hidden">
-          <button
-            type="button"
-            onClick={() => setIsMobileMenuOpen((prev) => !prev)}
-            className="inline-flex min-h-11 items-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
-            aria-label="メニューを開く"
-          >
-            <span className="text-base">☰</span>
-            メニュー
-          </button>
-          {isMobileMenuOpen ? (
-            <div className="mt-2 rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
-              <nav className="flex flex-col gap-2 text-sm">
-                <span className="rounded-md bg-zinc-100 px-3 py-2 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100">
-                  チェックリスト
-                </span>
-                <Link
-                  href="/admin"
-                  className="rounded-md px-3 py-2 text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                >
-                  管理画面
-                </Link>
-              </nav>
-            </div>
-          ) : null}
-        </div>
+        <AppMobileNavigation activePage="checklist" />
         <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
           <h2 className="mb-3 text-sm font-semibold text-zinc-800 dark:text-zinc-200">
             モード選択（自走度）

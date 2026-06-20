@@ -12,6 +12,8 @@ type ChecklistState = {
 type SaveToSheetBody = {
   sentAt?: string;
   toolName?: string;
+  senderName?: string;
+  mode?: "high" | "medium" | "low";
   dataDestination?: string;
   reportDestination?: string;
   checklistStates?: ChecklistState[];
@@ -75,6 +77,8 @@ export async function POST(request: Request) {
     const { userId } = await auth();
     const sentAt = body.sentAt || new Date().toISOString();
     const toolName = body.toolName?.trim() || "未指定";
+    const senderName = body.senderName?.trim() || "未設定";
+    const mode = body.mode === "medium" || body.mode === "low" ? body.mode : "high";
     const dataDestination = body.dataDestination?.trim() || "未設定";
     const reportDestination = body.reportDestination?.trim() || "未設定";
     const formattedMessage = body.formattedMessage?.trim() || "";
@@ -105,7 +109,7 @@ export async function POST(request: Request) {
 
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: `${sheetName}!A:F`,
+      range: `${sheetName}!A:I`,
       valueInputOption: "RAW",
       requestBody: {
         values: [
@@ -116,6 +120,9 @@ export async function POST(request: Request) {
             formattedMessage,
             dataDestination,
             reportDestination,
+            senderName,
+            mode,
+            userId || "",
           ],
         ],
       },
