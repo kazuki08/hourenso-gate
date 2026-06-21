@@ -93,10 +93,8 @@ export default function ChecklistPage() {
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState("");
   const [sendSuccess, setSendSuccess] = useState("");
-  const [mode, setMode] = useState<"high" | "medium" | "low">("high");
+  const [mode, setMode] = useState<"high" | "low">("high");
   const [isMasterChecklistLoaded, setIsMasterChecklistLoaded] = useState(false);
-  const [screeningDone, setScreeningDone] = useState(false);
-  const [screeningWarning, setScreeningWarning] = useState("");
   const [lineRecipientType, setLineRecipientType] = useState<"user" | "group">("user");
   const [aiFormatPrompt, setAiFormatPrompt] = useState(() => {
     if (typeof window === "undefined") {
@@ -106,12 +104,8 @@ export default function ChecklistPage() {
     return savedPrompt ?? DEFAULT_AI_FORMAT_PROMPT;
   });
 
-  const handleModeChange = (nextMode: "high" | "medium" | "low") => {
+  const handleModeChange = (nextMode: "high" | "low") => {
     setMode(nextMode);
-    if (nextMode !== "medium") {
-      setScreeningDone(false);
-      setScreeningWarning("");
-    }
   };
 
   useEffect(() => {
@@ -378,14 +372,6 @@ export default function ChecklistPage() {
       setFormattedMessage(data.formattedMessage || draftMessage);
       setFormatDone(true);
       setSendError("");
-      if (mode === "medium") {
-        const warning =
-          draftMessage.trim().length < 20
-            ? "AIスクリーニング警告: メッセージが短いため、抜け漏れがないか確認してください。"
-            : "";
-        setScreeningWarning(warning);
-        setScreeningDone(true);
-      }
     } catch {
       setFormatError("整形に失敗しました。しばらくして再試行してください。");
     } finally {
@@ -615,14 +601,8 @@ export default function ChecklistPage() {
     }));
   const remainingCount = allItems.filter((item) => !checked[item.id]).length;
   const allChecked = allItems.length > 0 && remainingCount === 0;
-  const isSendVisible =
-    mode === "high" || (mode === "medium" && screeningDone) || mode === "low";
-  const isSendEnabled =
-    mode === "high"
-      ? !isSending
-      : mode === "medium"
-        ? screeningDone && !isSending
-        : formatDone && !isSending;
+  const isSendVisible = mode === "high" || mode === "low";
+  const isSendEnabled = mode === "high" ? !isSending : formatDone && !isSending;
   return (
     <div className="flex flex-1 bg-zinc-50">
       <AppSidebarNavigation activePage="checklist" />
@@ -637,7 +617,6 @@ export default function ChecklistPage() {
           <div className="flex flex-wrap gap-2">
             {[
               { id: "high", label: "自走度：高" },
-              { id: "medium", label: "自走度：中" },
               { id: "low", label: "自走度：低" },
             ].map((option) => {
               const isActive = mode === option.id;
@@ -645,9 +624,7 @@ export default function ChecklistPage() {
                 <button
                   key={option.id}
                   type="button"
-                  onClick={() =>
-                    handleModeChange(option.id as "high" | "medium" | "low")
-                  }
+                  onClick={() => handleModeChange(option.id as "high" | "low")}
                   className={`min-h-11 rounded-md px-4 py-2 text-sm transition ${
                     isActive
                       ? "bg-zinc-900 text-white"
@@ -661,7 +638,7 @@ export default function ChecklistPage() {
           </div>
           <p className="mt-3 text-sm text-zinc-900">
             現在モード：
-            {mode === "high" ? "高" : mode === "medium" ? "中" : "低"}
+            {mode === "high" ? "高" : "低"}
           </p>
         </section>
 
@@ -931,13 +908,7 @@ export default function ChecklistPage() {
                         disabled={isFormatting || draftMessage.trim() === ""}
                         className="min-h-11 rounded-md border border-zinc-300 px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
                       >
-                        {mode === "medium"
-                          ? isFormatting
-                            ? "AIスクリーニング中..."
-                            : "AIスクリーニング"
-                          : isFormatting
-                            ? "AI整形中..."
-                            : "AIで整形する"}
+                        {isFormatting ? "AI整形中..." : "AIで整形する"}
                       </button>
                       <button
                         type="button"
@@ -971,12 +942,6 @@ export default function ChecklistPage() {
                         <pre className="whitespace-pre-wrap font-sans">{omissionFeedback}</pre>
                       </div>
                     ) : null}
-                    {mode === "medium" && screeningWarning ? (
-                      <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
-                        {screeningWarning}
-                      </div>
-                    ) : null}
-
                     <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-900">
                       <p>保存先: {dataDestination}</p>
                       <p>通知先: {reportDestination}</p>

@@ -249,19 +249,27 @@ export default function DashboardPage() {
   const recentModeData = useMemo(() => {
     const source = items.filter((item) => isWithinDays(item.sentAt, 30));
     const total = source.length;
-    const count = { high: 0, medium: 0, low: 0 };
+    const count = { high: 0, low: 0 };
     source.forEach((item) => {
-      count[item.mode] += 1;
+      if (item.mode === "low") {
+        count.low += 1;
+        return;
+      }
+      count.high += 1;
     });
     return [
-      { name: "高", key: "high", value: count.high, ratio: total > 0 ? Math.round((count.high / total) * 100) : 0 },
       {
-        name: "中",
-        key: "medium",
-        value: count.medium,
-        ratio: total > 0 ? Math.round((count.medium / total) * 100) : 0,
+        name: "高",
+        key: "high",
+        value: count.high,
+        ratio: total > 0 ? Math.round((count.high / total) * 100) : 0,
       },
-      { name: "低", key: "low", value: count.low, ratio: total > 0 ? Math.round((count.low / total) * 100) : 0 },
+      {
+        name: "低",
+        key: "low",
+        value: count.low,
+        ratio: total > 0 ? Math.round((count.low / total) * 100) : 0,
+      },
     ];
   }, [items]);
 
