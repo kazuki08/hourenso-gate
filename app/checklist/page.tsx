@@ -892,8 +892,6 @@ export default function ChecklistPage() {
                         onChange={(event) => {
                           setDraftMessage(event.target.value);
                           setFormatDone(false);
-                      setScreeningDone(false);
-                      setScreeningWarning("");
                         }}
                         placeholder="ここにメッセージを入力してください"
                         rows={6}
