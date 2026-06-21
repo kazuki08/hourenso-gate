@@ -8,6 +8,7 @@ type HistoryItem = {
   senderName: string;
   mode: "high" | "medium" | "low";
   message: string;
+  userId: string;
 };
 
 function getMissingEnvVars() {
@@ -82,12 +83,13 @@ export async function GET() {
           senderName: String(row[6] || "未設定"),
           mode: normalizeMode(String(row[7] || "")),
           message: message || "（報告内容なし）",
+          userId: String(row[8] || ""),
         };
       })
       .filter((item): item is HistoryItem => item !== null)
       .sort((a, b) => parseTimestamp(b.sentAt) - parseTimestamp(a.sentAt));
 
-    return NextResponse.json({ ok: true, items });
+    return NextResponse.json({ ok: true, items, currentUserId: userId });
   } catch (error) {
     console.error("履歴取得に失敗しました", error);
     return NextResponse.json(

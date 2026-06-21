@@ -49,7 +49,7 @@ function renderWithAutoLinks(text: string) {
           href={chunk}
           target="_blank"
           rel="noreferrer"
-          className="text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+          className="text-blue-600 underline-offset-2 hover:underline"
         >
           {chunk}
         </a>
@@ -450,14 +450,14 @@ export default function ChecklistPage() {
   const isSendEnabled =
     mode === "high" ? !isSending : mode === "medium" ? screeningDone && !isSending : false;
   return (
-    <div className="flex flex-1 bg-zinc-50 dark:bg-black">
+    <div className="flex flex-1 bg-zinc-50">
       <AppSidebarNavigation activePage="checklist" />
 
       <main className="flex w-full flex-1 justify-center px-4 py-6 sm:px-6 sm:py-10 lg:ml-64 lg:py-12">
         <div className="flex w-full max-w-2xl flex-col gap-6 px-1 sm:gap-8 sm:px-0">
         <AppMobileNavigation activePage="checklist" />
-        <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="mb-3 text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+        <section className="rounded-lg border border-zinc-200 bg-white p-4">
+          <h2 className="mb-3 text-sm font-semibold text-zinc-900">
             モード選択（自走度）
           </h2>
           <div className="flex flex-wrap gap-2">
@@ -476,8 +476,8 @@ export default function ChecklistPage() {
                   }
                   className={`min-h-11 rounded-md px-4 py-2 text-sm transition ${
                     isActive
-                      ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                      : "border border-zinc-300 text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                      ? "bg-zinc-900 text-white"
+                      : "border border-zinc-300 text-zinc-900 hover:bg-zinc-100"
                   }`}
                 >
                   {option.label}
@@ -485,7 +485,7 @@ export default function ChecklistPage() {
               );
             })}
           </div>
-          <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
+          <p className="mt-3 text-sm text-zinc-900">
             現在モード：
             {mode === "high" ? "高" : mode === "medium" ? "中" : "低"}
           </p>
@@ -496,47 +496,48 @@ export default function ChecklistPage() {
             <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
               今日のチェックリスト
             </h1>
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            <p className="text-sm text-zinc-900">
               選択ツール: {dataDestination}
             </p>
           </div>
           <Link
             href="/admin"
-            className="mt-1 text-xs text-zinc-500 underline-offset-2 hover:text-zinc-700 hover:underline dark:text-zinc-400 dark:hover:text-zinc-200"
+            className="mt-1 text-xs text-zinc-900 underline-offset-2 hover:text-zinc-900 hover:underline"
           >
             ⚙️ 管理画面
           </Link>
         </div>
 
         {mode === "low" ? (
-          <section className="flex min-h-64 items-center justify-center rounded-lg border border-zinc-200 bg-white p-8 text-center dark:border-zinc-800 dark:bg-zinc-900">
-            <p className="text-base text-zinc-700 dark:text-zinc-300">
+          <section className="flex min-h-64 items-center justify-center rounded-lg border border-zinc-200 bg-white p-8 text-center">
+            <p className="text-base text-zinc-900">
               完全自動AIモード：Notion等のメモから自動でスケジュールと報連相を作成・送信準備中...
             </p>
           </section>
         ) : (
           <>
-            <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+            <section className="rounded-lg border border-zinc-200 bg-white p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+                <h2 className="text-sm font-semibold text-zinc-900">
                   大項目
                 </h2>
               </div>
 
               <div className="mt-4 space-y-2 rounded-md border border-zinc-200 p-3 dark:border-zinc-700">
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">大項目（記述式）</p>
+                <p className="text-xs text-zinc-900">大項目（記述式）</p>
                 {categories.map((category, index) => (
                   <div key={`major-label-${index}`} className="flex items-center gap-2">
                     <input
                       value={category.title}
                       onChange={(event) => updateMajorCategoryLabel(index, event.target.value)}
-                      className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                      placeholder={`例：大項目 ${index + 1}`}
+                      className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-900"
                     />
                     <button
                       type="button"
                       onClick={() => addMajorCategoryAfter(index)}
                       aria-label="大項目を追加"
-                      className="inline-flex h-8 w-8 items-center justify-center rounded border border-zinc-300 text-sm text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded border border-zinc-300 text-sm text-zinc-900 hover:bg-zinc-100"
                     >
                       +
                     </button>
@@ -545,7 +546,7 @@ export default function ChecklistPage() {
                       onClick={() => removeMajorCategory(index)}
                       aria-label="大項目を削除"
                       disabled={categories.length <= 1}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded border border-zinc-300 text-sm text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded border border-zinc-300 text-sm text-zinc-900 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       -
                     </button>
@@ -556,10 +557,10 @@ export default function ChecklistPage() {
 
             {categories.map((category, index) => (
               <section key={category.id} className="flex flex-col gap-3">
-                <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">
+                <h2 className="text-lg font-semibold text-zinc-900">
                   {category.title.trim() || `大項目 ${index + 1}`}
                 </h2>
-                <ul className="flex flex-col gap-2 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+                <ul className="flex flex-col gap-2 rounded-lg border border-zinc-200 bg-white p-4">
                   {category.items.map((item) => (
                     <li key={item.id}>
                       <div className="flex items-center gap-2">
@@ -575,14 +576,14 @@ export default function ChecklistPage() {
                             onChange={(event) =>
                               updateChecklistItemLabel(category.id, item.id, event.target.value)
                             }
-                            className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300"
+                            className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-900"
                           />
                         </div>
                         <button
                           type="button"
                           onClick={() => addChecklistItem(category.id, item.id)}
                           aria-label="項目を追加"
-                          className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-300 text-sm text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                          className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-300 text-sm text-zinc-900 hover:bg-zinc-100"
                         >
                           +
                         </button>
@@ -591,7 +592,7 @@ export default function ChecklistPage() {
                           onClick={() => removeChecklistItem(category.id, item.id)}
                           aria-label="項目を削除"
                           disabled={category.items.length <= 1}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-300 text-sm text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                          className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-300 text-sm text-zinc-900 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           -
                         </button>
@@ -604,18 +605,18 @@ export default function ChecklistPage() {
 
             {rules.length > 0 ? (
               <section className="flex flex-col gap-3">
-                <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">
+                <h2 className="text-lg font-semibold text-zinc-900">
                   ルール解除で追加された項目
                 </h2>
-                <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+                <div className="rounded-lg border border-zinc-200 bg-white p-4">
                   {unlockedRuleItems.length > 0 ? (
                     <ul className="space-y-2">
                       {unlockedRuleItems.map((item) => (
                         <li
                           key={item.id}
-                          className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300"
+                          className="flex items-center gap-2 text-sm text-zinc-900"
                         >
-                          <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                          <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-900">
                             {item.targetType === "message"
                               ? "返信文"
                               : "自由入力項目"}
@@ -625,7 +626,7 @@ export default function ChecklistPage() {
                       ))}
                     </ul>
                   ) : (
-                    <p className="text-zinc-500 dark:text-zinc-400">
+                    <p className="text-zinc-900">
                       条件を満たすと、ここに追加項目が下から積み上がって表示されます。
                     </p>
                   )}
@@ -635,15 +636,15 @@ export default function ChecklistPage() {
 
             {allChecked ? (
               <section className="flex flex-col gap-3">
-                <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">
+                <h2 className="text-lg font-semibold text-zinc-900">
                   送信文
                 </h2>
-                <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+                <div className="rounded-lg border border-zinc-200 bg-white p-4">
                   <div className="flex flex-col gap-4">
                     <div className="flex flex-col gap-2">
                       <label
                         htmlFor="message-input"
-                        className="text-sm font-medium text-zinc-700 dark:text-zinc-300"
+                        className="text-sm font-medium text-zinc-900"
                       >
                         報連相メッセージ入力
                       </label>
@@ -658,7 +659,7 @@ export default function ChecklistPage() {
                         }}
                         placeholder="ここにメッセージを入力してください"
                         rows={6}
-                        className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                        className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
                       />
                     </div>
 
@@ -677,7 +678,7 @@ export default function ChecklistPage() {
                             ? "AI整形中..."
                             : "AIで整形する"}
                       </button>
-                      <label className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+                      <label className="flex items-center gap-2 text-sm text-zinc-900">
                         <input
                           type="checkbox"
                           checked={formatDone}
@@ -693,21 +694,21 @@ export default function ChecklistPage() {
                       ) : null}
                     </div>
                     {mode === "medium" && screeningWarning ? (
-                      <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+                      <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
                         {screeningWarning}
                       </div>
                     ) : null}
 
-                    <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300">
+                    <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-900">
                       <p>保存先: {dataDestination}</p>
                       <p>通知先: {reportDestination}</p>
                     </div>
 
-                    <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-950">
-                      <p className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3">
+                      <p className="mb-2 text-sm font-medium text-zinc-900">
                         整形結果
                       </p>
-                      <pre className="whitespace-pre-wrap font-sans text-zinc-700 dark:text-zinc-300">
+                      <pre className="whitespace-pre-wrap font-sans text-zinc-900">
                         {formattedMessage}
                       </pre>
                     </div>
@@ -717,7 +718,7 @@ export default function ChecklistPage() {
                         type="button"
                         onClick={handleSaveToSheet}
                         disabled={!isSendEnabled}
-                        className="min-h-11 w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 sm:w-fit"
+                        className="min-h-11 w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 sm:w-fit"
                       >
                         {isSending ? "スプレッドシートに保存中..." : "送信する"}
                       </button>
@@ -735,7 +736,7 @@ export default function ChecklistPage() {
               </section>
             ) : (
               <section className="flex flex-col gap-3">
-                <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-800">
                   🔒 物理ロック作動中：あと{remainingCount}個チェックが必要です
                 </div>
               </section>

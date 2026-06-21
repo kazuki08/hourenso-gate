@@ -367,7 +367,7 @@ export default function AdminPage() {
   };
 
   return (
-    <div className="flex flex-1 bg-zinc-50 dark:bg-black">
+    <div className="flex flex-1 bg-zinc-50">
       <AppSidebarNavigation activePage="admin" />
 
       <main className="flex w-full flex-1 justify-center px-4 py-6 sm:px-6 sm:py-10 lg:ml-64 lg:py-12">
@@ -376,24 +376,24 @@ export default function AdminPage() {
 
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-2">
-            <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">
+            <h1 className="text-2xl font-bold text-zinc-900">
               管理画面
             </h1>
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            <p className="text-sm text-zinc-900">
               SaaS化に向けた設定UIのモックです
             </p>
           </div>
           <Link
             href="/"
-            className="rounded-md border border-zinc-300 px-3 py-2 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+            className="rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-900 hover:bg-zinc-100"
           >
             ユーザー画面（チェックリスト）へ戻る
           </Link>
         </header>
 
-        <section className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
+        <section className="rounded-xl border border-zinc-200 bg-white p-5">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+            <h2 className="text-lg font-semibold text-zinc-900">
               表示/非表示ルールの紐付け
             </h2>
             <button
@@ -410,21 +410,21 @@ export default function AdminPage() {
                   },
                 ])
               }
-              className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+              className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-900 hover:bg-zinc-100"
             >
               + ルールを追加
             </button>
           </div>
 
-          <p className="mb-3 text-sm text-zinc-600 dark:text-zinc-400">
+          <p className="mb-3 text-sm text-zinc-900">
             表示対象は「返信文（固定）」または「自由入力」を選択できます。自由入力を選ぶとタイトル入力欄が表示されます。
           </p>
 
           <div className="space-y-3">
             {visibilityRules.map((rule, index) => (
               <div key={rule.id} className="grid gap-2 sm:grid-cols-[1fr_180px_180px_auto]">
-                <div className="rounded-md border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-950">
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                <div className="rounded-md border border-zinc-300 px-3 py-2">
+                  <p className="text-xs text-zinc-900">
                     トリガー項目（複数選択）
                   </p>
                   <div className="mt-2 max-h-32 space-y-1 overflow-y-auto pr-1">
@@ -433,7 +433,7 @@ export default function AdminPage() {
                       return (
                         <label
                           key={`trigger-${rule.id}-${label}`}
-                          className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300"
+                          className="flex items-center gap-2 text-sm text-zinc-900"
                         >
                           <input
                             type="checkbox"
@@ -441,14 +441,14 @@ export default function AdminPage() {
                             onChange={(event) =>
                               toggleRuleTrigger(index, label, event.target.checked)
                             }
-                            className="h-4 w-4 rounded border-zinc-300 text-zinc-900 dark:border-zinc-600"
+                            className="h-4 w-4 rounded border-zinc-300 text-zinc-900"
                           />
                           <span>{label}</span>
                         </label>
                       );
                     })}
                     {checklistSelectOptions.length === 0 ? (
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      <p className="text-xs text-zinc-900">
                         選択可能な項目がありません
                       </p>
                     ) : null}
@@ -459,7 +459,7 @@ export default function AdminPage() {
                   onChange={(event) =>
                     updateRuleTargetType(index, event.target.value as "extra" | "message")
                   }
-                  className="appearance-none rounded-md border border-zinc-300 px-3 py-2 pr-10 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                  className="appearance-none rounded-md border border-zinc-300 px-3 py-2 pr-10 text-sm text-zinc-900"
                   style={selectChevronStyle}
                 >
                   <option value="message">返信文（固定）</option>
@@ -470,13 +470,13 @@ export default function AdminPage() {
                     value={rule.target}
                     onChange={(event) => updateRule(index, "target", event.target.value)}
                     placeholder="表示タイトル（例：必要なURL・追加要素）"
-                    className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                    className="rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-900"
                   />
                 ) : (
                   <input
                     value="返信文"
                     readOnly
-                    className="rounded-md border border-zinc-300 bg-zinc-100 px-3 py-2 text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                    className="rounded-md border border-zinc-300 bg-zinc-100 px-3 py-2 text-sm text-zinc-900"
                   />
                 )}
                 <div className="flex items-center gap-2">
@@ -484,7 +484,7 @@ export default function AdminPage() {
                     type="button"
                     onClick={() => addRuleAfter(index)}
                     aria-label="ルールを追加"
-                    className="inline-flex h-8 w-8 items-center justify-center rounded border border-zinc-300 text-sm text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded border border-zinc-300 text-sm text-zinc-900 hover:bg-zinc-100"
                   >
                     +
                   </button>
@@ -493,7 +493,7 @@ export default function AdminPage() {
                     onClick={() => removeRule(index)}
                     aria-label="ルールを削除"
                     disabled={visibilityRules.length <= 1}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded border border-zinc-300 text-sm text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded border border-zinc-300 text-sm text-zinc-900 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     -
                   </button>
@@ -501,7 +501,7 @@ export default function AdminPage() {
               </div>
             ))}
             {checklistSelectOptions.length === 0 ? (
-              <p className="text-sm text-amber-700 dark:text-amber-300">
+              <p className="text-sm text-amber-700">
                 チェックリスト項目が見つかりません。チェックリスト画面で項目を追加するとここに反映されます。
               </p>
             ) : null}
@@ -512,72 +512,72 @@ export default function AdminPage() {
           <button
             type="button"
             onClick={saveSettings}
-            className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+            className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
           >
             設定を保存
           </button>
           {saveMessage ? (
-            <span className="text-sm text-emerald-700 dark:text-emerald-400">
+            <span className="text-sm text-emerald-700">
               {saveMessage}
             </span>
           ) : null}
         </div>
 
-        <section className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+        <section className="rounded-xl border border-zinc-200 bg-white p-5">
+          <h2 className="text-lg font-semibold text-zinc-900">
             LINE送信先設定
           </h2>
-          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+          <p className="mt-2 text-sm text-zinc-900">
             個人宛（上司など）か、LINEグループ宛かを選択します。
           </p>
 
           <div className="mt-4 flex flex-wrap gap-4">
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-sm text-zinc-900">
               <input
                 type="radio"
                 name="line-recipient-type"
                 value="user"
                 checked={lineRecipientType === "user"}
                 onChange={() => setLineRecipientType("user")}
-                className="h-4 w-4 border-zinc-300 text-zinc-900 dark:border-zinc-600"
+                className="h-4 w-4 border-zinc-300 text-zinc-900"
               />
               個人宛に送る
             </label>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-sm text-zinc-900">
               <input
                 type="radio"
                 name="line-recipient-type"
                 value="group"
                 checked={lineRecipientType === "group"}
                 onChange={() => setLineRecipientType("group")}
-                className="h-4 w-4 border-zinc-300 text-zinc-900 dark:border-zinc-600"
+                className="h-4 w-4 border-zinc-300 text-zinc-900"
               />
               グループ宛に送る
             </label>
           </div>
 
-          <div className="mt-4 rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm dark:border-zinc-700 dark:bg-zinc-950">
-            <p className="font-medium text-zinc-800 dark:text-zinc-100">現在の紐付け状態</p>
+          <div className="mt-4 rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm">
+            <p className="font-medium text-zinc-900">現在の紐付け状態</p>
             {lineLinkStatus.linked &&
             lineLinkStatus.recipientType === lineRecipientType ? (
-              <div className="mt-1 space-y-1 text-zinc-700 dark:text-zinc-300">
-                <p className="text-emerald-700 dark:text-emerald-400">設定済み</p>
+              <div className="mt-1 space-y-1 text-zinc-900">
+                <p className="text-emerald-700">設定済み</p>
                 <p>ID: {lineLinkStatus.lineId}</p>
                 <p>
                   種別: {lineLinkStatus.recipientType === "user" ? "個人ID" : "グループID"}
                 </p>
               </div>
             ) : (
-              <p className="mt-1 text-amber-700 dark:text-amber-300">未設定</p>
+              <p className="mt-1 text-amber-700">未設定</p>
             )}
             {lineLinkMessage ? (
-              <p className="mt-2 text-red-600 dark:text-red-400">{lineLinkMessage}</p>
+              <p className="mt-2 text-red-600">{lineLinkMessage}</p>
             ) : null}
           </div>
 
-          <div className="mt-4 rounded-md border border-zinc-200 p-3 text-sm dark:border-zinc-700">
-            <p className="font-medium text-zinc-800 dark:text-zinc-100">連携導線（QR/リンク）</p>
-            <p className="mt-2 text-zinc-600 dark:text-zinc-400">
+          <div className="mt-4 rounded-md border border-zinc-200 p-3 text-sm">
+            <p className="font-medium text-zinc-900">連携導線（QR/リンク）</p>
+            <p className="mt-2 text-zinc-900">
               Botを友だち追加（個人）またはグループへ招待した後、WebhookでIDが自動登録されます。
             </p>
             <div className="mt-3 space-y-2">
@@ -586,12 +586,12 @@ export default function AdminPage() {
                   href={lineAddFriendUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                  className="inline-flex rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-900 hover:bg-zinc-100"
                 >
                   友だち追加リンクを開く
                 </a>
               ) : (
-                <p className="text-zinc-500 dark:text-zinc-400">
+                <p className="text-zinc-900">
                   `NEXT_PUBLIC_LINE_ADD_FRIEND_URL` を設定するとリンクが表示されます。
                 </p>
               )}
@@ -600,18 +600,18 @@ export default function AdminPage() {
                   <img
                     src={lineQrImageUrl}
                     alt="LINE友だち追加QRコード"
-                    className="h-36 w-36 rounded border border-zinc-200 object-contain dark:border-zinc-700"
+                    className="h-36 w-36 rounded border border-zinc-200 object-contain"
                   />
                 </div>
               ) : (
-                <p className="text-zinc-500 dark:text-zinc-400">
+                <p className="text-zinc-900">
                   `NEXT_PUBLIC_LINE_QR_IMAGE_URL` を設定するとQRコード画像を表示できます。
                 </p>
               )}
             </div>
           </div>
 
-          <div className="mt-4 rounded-md border border-dashed border-zinc-300 p-3 text-xs text-zinc-600 dark:border-zinc-700 dark:text-zinc-400">
+          <div className="mt-4 rounded-md border border-dashed border-zinc-300 p-3 text-xs text-zinc-900">
             <p>Webhook URL（Clerkユーザー紐付け用）</p>
             <code className="mt-1 block break-all">{webhookSetupUrl}</code>
           </div>
