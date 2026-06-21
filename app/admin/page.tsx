@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { AppMobileNavigation, AppSidebarNavigation } from "../app-navigation";
 import {
+  AI_FORMAT_PROMPT_STORAGE_KEY,
   ALL_TOOLS_ID,
   CHECKLIST_TEMPLATES_STORAGE_KEY,
   LEGACY_ADMIN_SETTINGS_STORAGE_KEY,
@@ -16,6 +17,7 @@ import {
   type TemplateTool,
   type TemplateVisibilityRule,
 } from "../template-storage";
+import { DEFAULT_AI_FORMAT_PROMPT } from "../../lib/prompts";
 
 type AdminToolForm = TemplateTool;
 type AdminChecklistItemForm = {
@@ -68,6 +70,14 @@ export default function AdminPage() {
     },
   ]);
   const [saveMessage, setSaveMessage] = useState("");
+  const [aiFormatPrompt, setAiFormatPrompt] = useState(() => {
+    if (typeof window === "undefined") {
+      return DEFAULT_AI_FORMAT_PROMPT;
+    }
+    const savedPrompt = localStorage.getItem(AI_FORMAT_PROMPT_STORAGE_KEY);
+    return savedPrompt ?? DEFAULT_AI_FORMAT_PROMPT;
+  });
+  const [aiPromptSaveMessage, setAiPromptSaveMessage] = useState("");
   const [lineRecipientType, setLineRecipientType] = useState<"user" | "group">("user");
   const [lineLinkStatus, setLineLinkStatus] = useState<LineLinkStatus>({ linked: false });
   const [lineLinkMessage, setLineLinkMessage] = useState("");
@@ -136,6 +146,14 @@ export default function AdminPage() {
       // 保存データが壊れている場合は既定値のまま表示する
     }
   }, []);
+
+  useEffect(() => {
+    if (!aiPromptSaveMessage) return;
+    const timerId = window.setTimeout(() => {
+      setAiPromptSaveMessage("");
+    }, 3000);
+    return () => window.clearTimeout(timerId);
+  }, [aiPromptSaveMessage]);
 
   useEffect(() => {
     const loadChecklistOptions = () => {
@@ -366,6 +384,11 @@ export default function AdminPage() {
     setSaveMessage("設定を保存しました");
   };
 
+  const saveAiFormatPrompt = () => {
+    localStorage.setItem(AI_FORMAT_PROMPT_STORAGE_KEY, aiFormatPrompt);
+    setAiPromptSaveMessage("保存しました");
+  };
+
   return (
     <div className="flex flex-1 bg-zinc-50">
       <AppSidebarNavigation activePage="admin" />
@@ -505,6 +528,38 @@ export default function AdminPage() {
                 チェックリスト項目が見つかりません。チェックリスト画面で項目を追加するとここに反映されます。
               </p>
             ) : null}
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-zinc-200 bg-white p-5">
+          <h2 className="text-lg font-semibold text-zinc-900">AI整形プロンプト設定</h2>
+          <div className="mt-4">
+            <label
+              htmlFor="ai-format-prompt"
+              className="mb-2 block text-sm font-medium text-zinc-900"
+            >
+              AI整形プロンプト（報連相の整形ルール）
+            </label>
+            <textarea
+              id="ai-format-prompt"
+              value={aiFormatPrompt}
+              onChange={(event) => setAiFormatPrompt(event.target.value)}
+              rows={10}
+              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-900"
+              placeholder={DEFAULT_AI_FORMAT_PROMPT}
+            />
+            <div className="mt-3 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={saveAiFormatPrompt}
+                className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
+              >
+                保存
+              </button>
+              {aiPromptSaveMessage ? (
+                <span className="text-sm text-emerald-700">{aiPromptSaveMessage}</span>
+              ) : null}
+            </div>
           </div>
         </section>
 

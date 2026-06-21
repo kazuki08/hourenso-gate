@@ -9,6 +9,7 @@ import {
   type ChecklistCategory,
 } from "../checklist-data";
 import {
+  AI_FORMAT_PROMPT_STORAGE_KEY,
   ALL_TOOLS_ID,
   CHECKLIST_TEMPLATES_STORAGE_KEY,
   getTodayProgressStorageKey,
@@ -16,6 +17,7 @@ import {
   type ChecklistTemplateSettings,
   type TemplateVisibilityRule,
 } from "../template-storage";
+import { DEFAULT_AI_FORMAT_PROMPT } from "../../lib/prompts";
 
 const SEND_MESSAGE_PLACEHOLDER = `・〇〇の対応が完了しました。テスト等のレイアウト崩れも修正済みです。
 ・△△について、ページ遷移周りで詰まっています。後ほどご相談させてください。
@@ -35,6 +37,12 @@ function createChecklistItemId(categoryId: string) {
 function createChecklistCategoryId() {
   return `category-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
+
+type LowModeChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+};
 
 function renderWithAutoLinks(text: string) {
   const splitRegex = /(https?:\/\/[^\s]+)/g;
@@ -74,6 +82,12 @@ export default function ChecklistPage() {
   const [isFormatting, setIsFormatting] = useState(false);
   const [formatDone, setFormatDone] = useState(false);
   const [formatError, setFormatError] = useState("");
+  const [isNotionChecking, setIsNotionChecking] = useState(false);
+  const [omissionFeedback, setOmissionFeedback] = useState("");
+  const [omissionError, setOmissionError] = useState("");
+  const [isLowModeProcessing, setIsLowModeProcessing] = useState(false);
+  const [lowModeInput, setLowModeInput] = useState("");
+  const [lowModeChatMessages, setLowModeChatMessages] = useState<LowModeChatMessage[]>([]);
   const [dataDestination, setDataDestination] = useState("未設定");
   const [reportDestination, setReportDestination] = useState("未設定");
   const [isSending, setIsSending] = useState(false);
@@ -84,6 +98,13 @@ export default function ChecklistPage() {
   const [screeningDone, setScreeningDone] = useState(false);
   const [screeningWarning, setScreeningWarning] = useState("");
   const [lineRecipientType, setLineRecipientType] = useState<"user" | "group">("user");
+  const [aiFormatPrompt, setAiFormatPrompt] = useState(() => {
+    if (typeof window === "undefined") {
+      return DEFAULT_AI_FORMAT_PROMPT;
+    }
+    const savedPrompt = localStorage.getItem(AI_FORMAT_PROMPT_STORAGE_KEY);
+    return savedPrompt ?? DEFAULT_AI_FORMAT_PROMPT;
+  });
 
   const handleModeChange = (nextMode: "high" | "medium" | "low") => {
     setMode(nextMode);
@@ -343,7 +364,10 @@ export default function ChecklistPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ message: draftMessage }),
+        body: JSON.stringify({
+          message: draftMessage,
+          prompt: aiFormatPrompt,
+        }),
       });
 
       if (!response.ok) {
@@ -366,6 +390,124 @@ export default function ChecklistPage() {
       setFormatError("整形に失敗しました。しばらくして再試行してください。");
     } finally {
       setIsFormatting(false);
+    }
+  };
+
+  const fetchNotionText = async () => {
+    const notionResponse = await fetch("/api/notion/fetch", {
+      method: "GET",
+      cache: "no-store",
+    });
+    const notionData = (await notionResponse.json()) as {
+      ok?: boolean;
+      content?: string;
+      error?: string;
+    };
+    if (!notionResponse.ok || !notionData.ok || !notionData.content?.trim()) {
+      throw new Error(notionData.error || "notion_fetch_failed");
+    }
+    return notionData.content;
+  };
+
+  const checkOmissions = async (notionText: string, draftText: string) => {
+    const aiResponse = await fetch("/api/ai/check-omissions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        notionText,
+        draftText,
+      }),
+    });
+    const aiData = (await aiResponse.json()) as {
+      ok?: boolean;
+      feedback?: string;
+      error?: string;
+      message?: string;
+    };
+    if (!aiResponse.ok || !aiData.ok || !aiData.feedback?.trim()) {
+      throw new Error(aiData.message || aiData.error || "omission_check_failed");
+    }
+    return aiData.feedback;
+  };
+
+  const formatMessageWithApi = async (message: string) => {
+    const response = await fetch("/api/format-message", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        message,
+        prompt: aiFormatPrompt,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error("failed_to_format");
+    }
+    const data = (await response.json()) as { formattedMessage?: string };
+    return data.formattedMessage || message;
+  };
+
+  const handleLowModeChatSubmit = async () => {
+    if (isLowModeProcessing) {
+      return;
+    }
+
+    const rawInput = lowModeInput.trim();
+    if (!rawInput) {
+      return;
+    }
+
+    const userMessage: LowModeChatMessage = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      content: rawInput,
+    };
+
+    setLowModeChatMessages((prev) => [...prev, userMessage]);
+    setLowModeInput("");
+    setDraftMessage(rawInput);
+    setFormatDone(false);
+    setFormatError("");
+    setSendError("");
+    setSendSuccess("");
+    setOmissionError("");
+    setOmissionFeedback("");
+    setIsLowModeProcessing(true);
+
+    try {
+      const notionText = await fetchNotionText();
+      const omissionResult = await checkOmissions(notionText, rawInput);
+      setOmissionFeedback(omissionResult);
+
+      const formatSource = `${rawInput}\n\n【抜け漏れチェック結果】\n${omissionResult}`;
+      const formatted = await formatMessageWithApi(formatSource);
+      setFormattedMessage(formatted);
+      setFormatDone(true);
+
+      const assistantMessage: LowModeChatMessage = {
+        id: `assistant-${Date.now()}`,
+        role: "assistant",
+        content: `抜け漏れチェック結果:\n${omissionResult}\n\n整形結果:\n${formatted}`,
+      };
+      setLowModeChatMessages((prev) => [...prev, assistantMessage]);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "low_mode_process_failed";
+      setFormatError(`AI処理に失敗しました: ${message}`);
+      setOmissionError(`Notion照合に失敗しました: ${message}`);
+      setLowModeChatMessages((prev) => [
+        ...prev,
+        {
+          id: `assistant-error-${Date.now()}`,
+          role: "assistant",
+          content: `処理に失敗しました。${message}`,
+        },
+      ]);
+    } finally {
+      setIsLowModeProcessing(false);
     }
   };
 
@@ -419,6 +561,33 @@ export default function ChecklistPage() {
     }
   };
 
+  const handleCheckOmissionsFromNotion = async () => {
+    if (isNotionChecking) {
+      return;
+    }
+
+    setIsNotionChecking(true);
+    setOmissionError("");
+    setOmissionFeedback("");
+
+    try {
+      const notionText = await fetchNotionText();
+
+      const draftForCheck =
+        draftMessage.trim() || formattedMessage.trim() || "（報告ドラフト未入力）";
+      const feedback = await checkOmissions(notionText, draftForCheck);
+      setOmissionFeedback(feedback);
+    } catch (error) {
+      setOmissionError(
+        error instanceof Error
+          ? `Notion照合に失敗しました: ${error.message}`
+          : "Notion照合に失敗しました。"
+      );
+    } finally {
+      setIsNotionChecking(false);
+    }
+  };
+
   const allItems = categories.flatMap((category) => category.items);
   const senderName =
     user?.fullName?.trim() ||
@@ -446,9 +615,14 @@ export default function ChecklistPage() {
     }));
   const remainingCount = allItems.filter((item) => !checked[item.id]).length;
   const allChecked = allItems.length > 0 && remainingCount === 0;
-  const isSendVisible = mode === "high" || (mode === "medium" && screeningDone);
+  const isSendVisible =
+    mode === "high" || (mode === "medium" && screeningDone) || mode === "low";
   const isSendEnabled =
-    mode === "high" ? !isSending : mode === "medium" ? screeningDone && !isSending : false;
+    mode === "high"
+      ? !isSending
+      : mode === "medium"
+        ? screeningDone && !isSending
+        : formatDone && !isSending;
   return (
     <div className="flex flex-1 bg-zinc-50">
       <AppSidebarNavigation activePage="checklist" />
@@ -509,10 +683,97 @@ export default function ChecklistPage() {
         </div>
 
         {mode === "low" ? (
-          <section className="flex min-h-64 items-center justify-center rounded-lg border border-zinc-200 bg-white p-8 text-center">
-            <p className="text-base text-zinc-900">
-              完全自動AIモード：Notion等のメモから自動でスケジュールと報連相を作成・送信準備中...
-            </p>
+          <section className="rounded-lg border border-zinc-200 bg-white p-4">
+            <div className="flex min-h-80 flex-col gap-4">
+              <p className="text-sm text-zinc-900">
+                自走度：低モード（チャット入力）- 入力送信後に Notion 照合と文章整形を実行します。
+              </p>
+
+              <div className="flex flex-1 flex-col gap-3 rounded-md border border-zinc-200 bg-zinc-50 p-3">
+                {lowModeChatMessages.length === 0 ? (
+                  <p className="text-sm text-zinc-600">
+                    下の入力欄から報連相を送ると、AIの返答がここに表示されます。
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    {lowModeChatMessages.map((message) => (
+                      <div
+                        key={message.id}
+                        className={`max-w-[92%] whitespace-pre-wrap rounded-xl px-4 py-3 text-sm ${
+                          message.role === "user"
+                            ? "self-end bg-zinc-900 text-white"
+                            : "self-start border border-blue-100 bg-white text-zinc-900"
+                        }`}
+                      >
+                        {message.content}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {isLowModeProcessing ? (
+                  <p className="text-sm text-blue-700">
+                    AI処理中...（Notion取得 -&gt; 抜け漏れ検知 -&gt; 文章整形）
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="rounded-lg border border-zinc-200 bg-white p-3">
+                <div className="flex items-end gap-2">
+                  <textarea
+                    value={lowModeInput}
+                    onChange={(event) => setLowModeInput(event.target.value)}
+                    placeholder="報連相を自由記述で入力..."
+                    rows={3}
+                    className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-900"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleLowModeChatSubmit}
+                    disabled={isLowModeProcessing || lowModeInput.trim() === ""}
+                    aria-label="チャット送信"
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-blue-600 text-lg text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    ➤
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-900">
+                <p>保存先: {dataDestination}</p>
+                <p>通知先: {reportDestination}</p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSaveToSheet}
+                disabled={!isSendEnabled}
+                className="min-h-11 w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 sm:w-fit"
+              >
+                {isSending ? "スプレッドシートに保存中..." : "LINE送信"}
+              </button>
+
+              {!formatDone ? (
+                <p className="text-sm text-amber-700">
+                  物理ロック中：AI整形結果が表示されるまでLINE送信できません。
+                </p>
+              ) : null}
+            </div>
+            {formatError ? (
+              <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {formatError}
+              </div>
+            ) : null}
+            {sendError ? (
+              <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {sendError}
+              </div>
+            ) : null}
+            {sendSuccess ? (
+              <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+                {sendSuccess}
+              </div>
+            ) : null}
           </section>
         ) : (
           <>
@@ -678,6 +939,14 @@ export default function ChecklistPage() {
                             ? "AI整形中..."
                             : "AIで整形する"}
                       </button>
+                      <button
+                        type="button"
+                        onClick={handleCheckOmissionsFromNotion}
+                        disabled={isNotionChecking}
+                        className="min-h-11 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isNotionChecking ? "Notionと照合中..." : "✨ Notionメモから抜け漏れをチェック"}
+                      </button>
                       <label className="flex items-center gap-2 text-sm text-zinc-900">
                         <input
                           type="checkbox"
@@ -692,7 +961,16 @@ export default function ChecklistPage() {
                           {formatError}
                         </span>
                       ) : null}
+                      {omissionError ? (
+                        <span className="text-sm text-red-600">{omissionError}</span>
+                      ) : null}
                     </div>
+                    {omissionFeedback ? (
+                      <div className="rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+                        <p className="mb-1 font-medium">AIチェック結果</p>
+                        <pre className="whitespace-pre-wrap font-sans">{omissionFeedback}</pre>
+                      </div>
+                    ) : null}
                     {mode === "medium" && screeningWarning ? (
                       <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
                         {screeningWarning}

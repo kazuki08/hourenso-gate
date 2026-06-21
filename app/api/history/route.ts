@@ -36,6 +36,17 @@ function parseTimestamp(value: string) {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
+function normalizeHistoryUserId(raw: string) {
+  const normalized = raw.trim();
+  if (!normalized) {
+    return "";
+  }
+  if (["null", "undefined", "-", "なし"].includes(normalized.toLowerCase())) {
+    return "";
+  }
+  return normalized;
+}
+
 export async function GET() {
   const { userId } = await auth();
   if (!userId) {
@@ -83,7 +94,7 @@ export async function GET() {
           senderName: String(row[6] || "未設定"),
           mode: normalizeMode(String(row[7] || "")),
           message: message || "（報告内容なし）",
-          userId: String(row[8] || ""),
+          userId: normalizeHistoryUserId(String(row[8] || "")),
         };
       })
       .filter((item): item is HistoryItem => item !== null)

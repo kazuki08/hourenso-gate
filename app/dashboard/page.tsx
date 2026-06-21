@@ -15,6 +15,7 @@ import {
   YAxis,
 } from "recharts";
 import { Flame, Rocket, Sparkles, Trophy } from "lucide-react";
+import { useUser } from "@clerk/nextjs";
 
 type HistoryItem = {
   id: string;
@@ -33,7 +34,6 @@ const MODE_COLORS: Record<HistoryItem["mode"], string> = {
 
 const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
 const ALERT_KEYWORDS = ["相談あり", "遅延", "トラブル", "詰まり", "リスク", "確認が必要"];
-type DashboardTab = "team" | "my";
 
 function formatSentAt(value: string) {
   const date = new Date(value);
@@ -121,10 +121,60 @@ function getSelfDriveRank(highModeCount: number) {
   };
 }
 
+function splitSearchTokens(keyword: string) {
+  return keyword
+    .toLowerCase()
+    .trim()
+    .split(/[\s\u3000、。,.!！?？/／・:：;；]+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+function normalizeForSearch(text: string) {
+  return text
+    .toLowerCase()
+    .replace(/[\s\u3000、。,.!！?？/／・:：;；'"`´^~\-_[\]{}()（）「」『』【】]/g, "");
+}
+
+function expandTokenVariants(token: string) {
+  const variants = new Set<string>();
+  const trimmed = token.trim();
+  if (!trimmed) {
+    return [];
+  }
+  variants.add(trimmed);
+  variants.add(trimmed.replace(/(など|等)$/g, ""));
+  return Array.from(variants).filter(Boolean);
+}
+
+function normalizeHistoryUserId(rawUserId: string) {
+  const normalized = rawUserId.trim();
+  if (!normalized) {
+    return "";
+  }
+  if (["null", "undefined", "-", "なし"].includes(normalized.toLowerCase())) {
+    return "";
+  }
+  return normalized;
+}
+
+function matchesKeyword(item: HistoryItem, keyword: string) {
+  const tokens = splitSearchTokens(keyword);
+  if (tokens.length === 0) {
+    return true;
+  }
+
+  const searchable = normalizeForSearch(`${item.senderName} ${item.message}`);
+  return tokens.every((token) => {
+    const variants = expandTokenVariants(token).map((value) => normalizeForSearch(value));
+    return variants.some((variant) => variant && searchable.includes(variant));
+  });
+}
+
 export default function DashboardPage() {
+  const { user } = useUser();
   const [items, setItems] = useState<HistoryItem[]>([]);
   const [currentUserId, setCurrentUserId] = useState("");
-  const [activeTab, setActiveTab] = useState<DashboardTab>("team");
   const [keyword, setKeyword] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -160,26 +210,40 @@ export default function DashboardPage() {
   }, []);
 
   const filteredTeamItems = useMemo(() => {
-    const term = keyword.trim().toLowerCase();
-    if (!term) return items;
-    return items.filter(
-      (item) =>
-        item.senderName.toLowerCase().includes(term) ||
-        item.message.toLowerCase().includes(term)
-    );
+    return items.filter((item) => matchesKeyword(item, keyword));
   }, [items, keyword]);
   const myItems = useMemo(() => {
-    if (!currentUserId) return [];
-    return items.filter((item) => item.userId === currentUserId);
-  }, [items, currentUserId]);
+    const senderCandidates = [
+      user?.fullName?.trim(),
+      user?.primaryEmailAddress?.emailAddress?.trim(),
+    ]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.toLowerCase());
+
+    return items.filter((item) => {
+      const normalizedItemUserId = normalizeHistoryUserId(item.userId);
+      const normalizedCurrentUserId = normalizeHistoryUserId(currentUserId);
+
+      if (normalizedCurrentUserId && normalizedItemUserId === normalizedCurrentUserId) {
+        return true;
+      }
+      if (normalizedItemUserId) {
+        return false;
+      }
+      if (senderCandidates.length === 0) {
+        return false;
+      }
+      const normalizedSender = item.senderName.trim().toLowerCase();
+      return senderCandidates.some(
+        (candidate) =>
+          normalizedSender === candidate ||
+          normalizedSender.includes(candidate) ||
+          candidate.includes(normalizedSender)
+      );
+    });
+  }, [items, currentUserId, user]);
   const filteredMyItems = useMemo(() => {
-    const term = keyword.trim().toLowerCase();
-    if (!term) return myItems;
-    return myItems.filter(
-      (item) =>
-        item.senderName.toLowerCase().includes(term) ||
-        item.message.toLowerCase().includes(term)
-    );
+    return myItems.filter((item) => matchesKeyword(item, keyword));
   }, [myItems, keyword]);
 
   const recentModeData = useMemo(() => {
@@ -248,35 +312,10 @@ export default function DashboardPage() {
               送信履歴ダッシュボード
             </h1>
             <p className="mt-1 text-sm text-zinc-500">
-              チーム分析と個人の振り返りを切り替えて確認できます。
+              チーム分析と個人の振り返りを同じ画面で確認できます。
             </p>
-            <div className="mt-4 inline-flex rounded-lg border border-blue-100 bg-sky-50/60 p-1">
-              <button
-                type="button"
-                onClick={() => setActiveTab("team")}
-                className={`rounded-md px-4 py-2 text-sm ${
-                  activeTab === "team"
-                    ? "bg-blue-600 text-white"
-                    : "text-zinc-600 hover:bg-white"
-                }`}
-              >
-                チーム全体
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("my")}
-                className={`rounded-md px-4 py-2 text-sm ${
-                  activeTab === "my"
-                    ? "bg-blue-600 text-white"
-                    : "text-zinc-600 hover:bg-white"
-                }`}
-              >
-                マイレポート
-              </button>
-            </div>
           </section>
-          {activeTab === "team" ? (
-            <>
+
           <section className="mb-6 grid gap-4 lg:grid-cols-2">
             <article className="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm">
               <h2 className="text-sm font-semibold text-zinc-800">
@@ -366,46 +405,42 @@ export default function DashboardPage() {
               </ul>
             )}
           </section>
-            </>
-          ) : (
-            <section className="mb-6 grid gap-4 lg:grid-cols-2">
-              <article className="rounded-2xl border border-blue-100 bg-white p-6 shadow-sm">
-                <p className="text-sm text-zinc-500">今週の振り返り</p>
-                <p className="mt-3 text-3xl font-bold text-zinc-900">
-                  今週の報告数: {myWeeklyCount}件
+
+          <section className="mb-6 grid gap-4 lg:grid-cols-2">
+            <article className="rounded-2xl border border-blue-100 bg-white p-6 shadow-sm">
+              <p className="text-sm text-zinc-500">今週の振り返り</p>
+              <p className="mt-3 text-3xl font-bold text-zinc-900">
+                今週の報告数: {myWeeklyCount}件
+              </p>
+              <p className="mt-2 text-sm text-zinc-600">
+                今週送信したあなたの報連相件数です。
+              </p>
+            </article>
+            <article
+              className={`rounded-2xl border border-blue-100 p-6 shadow-sm ${myRank.bg}`}
+            >
+              <div className="flex items-center gap-3">
+                <RankIcon className={`h-6 w-6 ${myRank.accent}`} />
+                <p className="text-sm font-semibold text-zinc-800">
+                  自走度レベルステータス
                 </p>
-                <p className="mt-2 text-sm text-zinc-600">
-                  今週送信したあなたの報連相件数です。
-                </p>
-              </article>
-              <article
-                className={`rounded-2xl border border-blue-100 p-6 shadow-sm ${myRank.bg}`}
-              >
-                <div className="flex items-center gap-3">
-                  <RankIcon className={`h-6 w-6 ${myRank.accent}`} />
-                  <p className="text-sm font-semibold text-zinc-800">
-                    自走度レベルステータス
-                  </p>
-                </div>
-                <p className={`mt-3 text-2xl font-bold ${myRank.accent}`}>{myRank.title}</p>
-                <p className="mt-2 text-sm text-zinc-600">
-                  高モード送信回数: {myHighModeCount}件
-                </p>
-                <p className="mt-1 text-xs text-zinc-500">
-                  {myRank.nextTarget}
-                </p>
-              </article>
-            </section>
-          )}
+              </div>
+              <p className={`mt-3 text-2xl font-bold ${myRank.accent}`}>{myRank.title}</p>
+              <p className="mt-2 text-sm text-zinc-600">
+                高モード送信回数: {myHighModeCount}件
+              </p>
+              <p className="mt-1 text-xs text-zinc-500">
+                {myRank.nextTarget}
+              </p>
+            </article>
+          </section>
 
           <div className="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm sm:p-6">
             <h2 className="text-lg font-semibold text-zinc-900">
-              {activeTab === "team" ? "チーム履歴フィード" : "マイ履歴フィード"}
+              送信履歴
             </h2>
             <p className="mt-1 text-sm text-zinc-500">
-              {activeTab === "team"
-                ? "チーム全体の報連相をタイムライン形式で確認できます。"
-                : "あなたの報連相をタイムライン形式で確認できます。"}
+              報連相をタイムライン形式で確認できます。
             </p>
             <div className="mt-4">
               <input
@@ -427,12 +462,12 @@ export default function DashboardPage() {
               <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">
                 履歴の読み込みに失敗しました: {error}
               </div>
-            ) : (activeTab === "team" ? filteredTeamItems : filteredMyItems).length === 0 ? (
+            ) : filteredTeamItems.length === 0 ? (
               <div className="rounded-xl border border-blue-100 bg-white p-6 text-sm text-zinc-600">
                 該当する履歴がありません。
               </div>
             ) : (
-              (activeTab === "team" ? filteredTeamItems : filteredMyItems).map((item) => (
+              filteredTeamItems.map((item) => (
                 <article
                   key={item.id}
                   className="rounded-xl border border-blue-100 bg-white p-5 shadow-sm"

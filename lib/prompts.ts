@@ -1,8 +1,9 @@
-export const FORMAT_MESSAGE_SYSTEM_PROMPT = `
-あなたは報連相メッセージを整形するアシスタントです。
-- 事実と依頼を分けて読みやすく整理してください
-- 内容を削らず、簡潔で丁寧な日本語にしてください
-- 箇条書きを優先し、必要なら見出しを付けてください
-- 最終行に「必要な確認事項」があれば明示してください
+export const DEFAULT_AI_FORMAT_PROMPT = `
+以下の報連相の下書きを、ビジネスメール形式に整形してください。
+・冒頭に【報告】【連絡】【相談】のいずれかを付けてください
+・箇条書きは自然な文章に直してください
+・敬語を使い、簡潔にまとめてください
 `.trim();
+
+export const FORMAT_MESSAGE_SYSTEM_PROMPT = DEFAULT_AI_FORMAT_PROMPT;
 
