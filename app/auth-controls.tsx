@@ -68,7 +68,7 @@ export function AuthControls() {
             ) : null}
           </div>
         ) : (
-          <SignInButton mode="modal">
+          <SignInButton mode="modal" fallbackRedirectUrl="/" forceRedirectUrl="/">
             <button
               type="button"
               className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"

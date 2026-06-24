@@ -21,6 +21,15 @@ export default function Home() {
   const router = useRouter();
   const [dataDestination, setDataDestination] = useState("");
   const [reportDestination, setReportDestination] = useState("");
+  const [webViewGuidance] = useState(() => {
+    if (typeof window === "undefined") {
+      return { show: false, redirectPath: "/checklist" };
+    }
+    const params = new URLSearchParams(window.location.search);
+    const show = params.get("openExternal") === "1";
+    const redirectPath = params.get("redirect_url") || "/checklist";
+    return { show, redirectPath };
+  });
 
   useEffect(() => {
     const saved = localStorage.getItem(INTEGRATION_SETTINGS_STORAGE_KEY);
@@ -60,9 +69,58 @@ export default function Home() {
     router.push("/checklist");
   };
 
+  const openInExternalBrowser = () => {
+    if (typeof window === "undefined") return;
+    const origin = window.location.origin;
+    const normalizedPath = webViewGuidance.redirectPath.startsWith("/")
+      ? webViewGuidance.redirectPath
+      : `/${webViewGuidance.redirectPath}`;
+    const targetUrl = `${origin}${normalizedPath}`;
+    const ua = window.navigator.userAgent.toLowerCase();
+    if (ua.includes("android")) {
+      const intentPath = `${window.location.host}${normalizedPath}`;
+      const androidIntent = `intent://${intentPath}#Intent;scheme=https;package=com.android.chrome;end`;
+      window.location.href = androidIntent;
+      return;
+    }
+    if (ua.includes("iphone") || ua.includes("ipad")) {
+      const iosSafari = `x-safari-${targetUrl}`;
+      window.location.href = iosSafari;
+      return;
+    }
+    window.open(targetUrl, "_blank", "noopener,noreferrer");
+  };
+
   return (
     <div className="flex flex-1 items-center justify-center bg-zinc-50 px-6 py-12">
       <main className="w-full max-w-4xl">
+        {webViewGuidance.show ? (
+          <section className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4">
+            <p className="text-sm text-amber-900">
+              LINEアプリ内ブラウザではGoogleログインが制限されます。外部ブラウザで開いてログインしてください。
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={openInExternalBrowser}
+                className="rounded-md border border-amber-400 bg-white px-3 py-2 text-sm text-amber-900 hover:bg-amber-100"
+              >
+                外部ブラウザで開く
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  void navigator.clipboard?.writeText(
+                    `${window.location.origin}${webViewGuidance.redirectPath}`
+                  )
+                }
+                className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100"
+              >
+                URLコピー
+              </button>
+            </div>
+          </section>
+        ) : null}
         <div className="mb-8 flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-zinc-900">

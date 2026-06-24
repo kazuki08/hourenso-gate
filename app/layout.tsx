@@ -31,7 +31,12 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-white text-zinc-900">
-        <ClerkProvider>
+        <ClerkProvider
+          signInFallbackRedirectUrl="/"
+          signUpFallbackRedirectUrl="/"
+          signInForceRedirectUrl="/"
+          signUpForceRedirectUrl="/"
+        >
           <header className="border-b border-blue-100 bg-white/95 backdrop-blur">
             <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3">
               <Link
