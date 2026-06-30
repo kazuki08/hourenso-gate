@@ -165,7 +165,13 @@ function sanitizeFinalReportText(rawText: string) {
     .map((line) => line.trimEnd())
     .filter((line) => !boilerplatePatterns.some((pattern) => pattern.test(line)));
 
-  return lines.join("\n").trim();
+  const cleaned = lines
+    .map((line) => line.replace(/^#{1,6}\s+/, ""))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return cleaned;
 }
 
 async function generateDraftWithGemini(params: {
@@ -342,13 +348,7 @@ async function handleMessageEvent(
     return { status: "skipped" as const, reason: "final_body_empty" };
   }
 
-  const finalMessage = [
-    "【報連相 確定版】",
-    `送信元: ${actorId}`,
-    `時刻: ${new Date().toISOString()}`,
-    "",
-    finalBody,
-  ].join("\n");
+  const finalMessage = finalBody;
 
   let sheetSaved = false;
   let sheetError = "";
