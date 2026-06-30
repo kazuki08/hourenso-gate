@@ -47,6 +47,19 @@ function createSheetsClient() {
   if (!email || !key) {
     throw new Error("google_credentials_not_configured");
   }
+  const hasBegin = key.includes("BEGIN PRIVATE KEY");
+  const hasEnd = key.includes("END PRIVATE KEY");
+  if (!hasBegin || !hasEnd) {
+    console.error(
+      "[Sheets] GOOGLE_PRIVATE_KEY format invalid",
+      JSON.stringify({
+        keyLength: key.length,
+        hasBegin,
+        hasEnd,
+      })
+    );
+    throw new Error("google_private_key_format_invalid");
+  }
 
   const auth = new google.auth.JWT({
     email,
