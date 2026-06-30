@@ -142,6 +142,32 @@ function isCreateDraftTrigger(text: string) {
   return text.includes("日報作成");
 }
 
+function sanitizeFinalReportText(rawText: string) {
+  const trimmed = rawText.trim();
+  if (!trimmed) return "";
+
+  let normalized = trimmed;
+  const isWrappedInDoubleQuotes =
+    normalized.startsWith("\"") && normalized.endsWith("\"");
+  const isWrappedInJapaneseQuotes =
+    normalized.startsWith("「") && normalized.endsWith("」");
+  if (isWrappedInDoubleQuotes || isWrappedInJapaneseQuotes) {
+    normalized = normalized.slice(1, -1).trim();
+  }
+
+  const boilerplatePatterns = [
+    /^日報ドラフトを作成しました。必要な箇所を修正して、そのまま返信すると確定版として転送します。?$/,
+    /^※必要に応じて加筆・修正して、このまま返信してください。?$/,
+  ];
+
+  const lines = normalized
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter((line) => !boilerplatePatterns.some((pattern) => pattern.test(line)));
+
+  return lines.join("\n").trim();
+}
+
 async function generateDraftWithGemini(params: {
   notionText: string;
   customPrompt?: string;
@@ -307,12 +333,21 @@ async function handleMessageEvent(
     return { status: "skipped" as const, reason: "forward_target_missing" };
   }
 
+  const finalBody = sanitizeFinalReportText(text);
+  if (!finalBody) {
+    await replyLineMessage(
+      replyToken,
+      "本文が空になりました。日報本文だけを貼り付けて再送してください。"
+    );
+    return { status: "skipped" as const, reason: "final_body_empty" };
+  }
+
   const finalMessage = [
     "【報連相 確定版】",
     `送信元: ${actorId}`,
     `時刻: ${new Date().toISOString()}`,
     "",
-    text,
+    finalBody,
   ].join("\n");
 
   let sheetSaved = false;
@@ -331,7 +366,7 @@ async function handleMessageEvent(
           sentAt: new Date().toISOString(),
           toolName: "LINEトーク / Notion / LINE",
           checklistSummary: `確定版送信 from ${actorId}`,
-          formattedMessage: text,
+          formattedMessage: finalBody,
           dataDestination: "Notion",
           reportDestination: "LINE",
           senderName: actorId,
