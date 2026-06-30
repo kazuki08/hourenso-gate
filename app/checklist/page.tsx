@@ -379,6 +379,16 @@ export default function ChecklistPage() {
     }
   };
 
+  const formatApiError = (
+    data: { error?: string; message?: string; missing?: string[] },
+    fallback: string
+  ) => {
+    if (data.error === "missing_env_vars" && data.missing?.length) {
+      return `環境変数が未設定です: ${data.missing.join(", ")}`;
+    }
+    return data.message || data.error || fallback;
+  };
+
   const fetchNotionText = async () => {
     const notionResponse = await fetch("/api/notion/fetch", {
       method: "GET",
@@ -388,11 +398,20 @@ export default function ChecklistPage() {
       ok?: boolean;
       content?: string;
       error?: string;
+      message?: string;
+      missing?: string[];
+      notConfigured?: boolean;
     };
-    if (!notionResponse.ok || !notionData.ok || !notionData.content?.trim()) {
-      throw new Error(notionData.error || "notion_fetch_failed");
+    if (!notionResponse.ok || !notionData.ok) {
+      throw new Error(formatApiError(notionData, "notion_fetch_failed"));
     }
-    return notionData.content;
+    if (notionData.notConfigured) {
+      return { content: "", notConfigured: true as const };
+    }
+    if (!notionData.content?.trim()) {
+      throw new Error("notion_fetch_failed");
+    }
+    return { content: notionData.content, notConfigured: false as const };
   };
 
   const checkOmissions = async (notionText: string, draftText: string) => {
@@ -411,9 +430,10 @@ export default function ChecklistPage() {
       feedback?: string;
       error?: string;
       message?: string;
+      missing?: string[];
     };
     if (!aiResponse.ok || !aiData.ok || !aiData.feedback?.trim()) {
-      throw new Error(aiData.message || aiData.error || "omission_check_failed");
+      throw new Error(formatApiError(aiData, "omission_check_failed"));
     }
     return aiData.feedback;
   };
@@ -464,7 +484,7 @@ export default function ChecklistPage() {
     setIsLowModeProcessing(true);
 
     try {
-      const notionText = await fetchNotionText();
+      const { content: notionText } = await fetchNotionText();
       const omissionResult = await checkOmissions(notionText, rawInput);
       setOmissionFeedback(omissionResult);
 
@@ -557,7 +577,7 @@ export default function ChecklistPage() {
     setOmissionFeedback("");
 
     try {
-      const notionText = await fetchNotionText();
+      const { content: notionText } = await fetchNotionText();
 
       const draftForCheck =
         draftMessage.trim() || formattedMessage.trim() || "（報告ドラフト未入力）";

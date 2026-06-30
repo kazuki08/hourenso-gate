@@ -4,6 +4,7 @@ import {
   parseSheetDestinations,
   type SheetDestination,
 } from "../../../lib/sheet-destinations";
+import { getMissingNotifierEnvVars, notifyToLine } from "@/lib/notifiers";
 
 type SendReportBody = {
   message?: string;
@@ -31,36 +32,10 @@ function getConfiguredDestinations(): SheetDestination[] {
 }
 
 function getMissingEnvVars() {
-  const required = [
-    "LINE_CHANNEL_ACCESS_TOKEN",
-    "LINE_TARGET_USER_ID",
-    "GOOGLE_CLIENT_EMAIL",
-    "GOOGLE_PRIVATE_KEY",
-  ] as const;
-
-  return required.filter((key) => !process.env[key]);
-}
-
-async function sendLineMessage(message: string) {
-  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-  const targetUserId = process.env.LINE_TARGET_USER_ID;
-
-  const response = await fetch("https://api.line.me/v2/bot/message/push", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      to: targetUserId,
-      messages: [{ type: "text", text: message }],
-    }),
-  });
-
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`LINE send failed: ${response.status} ${detail}`);
-  }
+  const required = ["LINE_TARGET_USER_ID", "GOOGLE_CLIENT_EMAIL", "GOOGLE_PRIVATE_KEY"] as const;
+  const missing: string[] = required.filter((key) => !process.env[key]);
+  missing.push(...getMissingNotifierEnvVars());
+  return missing;
 }
 
 async function appendToGoogleSheet(params: {
@@ -144,7 +119,10 @@ export async function POST(request: Request) {
       );
     }
 
-    await sendLineMessage(message);
+    await notifyToLine({
+      to: process.env.LINE_TARGET_USER_ID || "",
+      message,
+    });
     await appendToGoogleSheet({
       destination,
       toolName,

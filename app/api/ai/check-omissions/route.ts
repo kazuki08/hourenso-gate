@@ -15,6 +15,25 @@ function getMissingEnvVars() {
   return required.filter((key) => !process.env[key]);
 }
 
+function buildMockOmissionFeedback(notionText: string, draftText: string) {
+  if (!notionText) {
+    return [
+      "Notionメモが未設定のため、抜け漏れの自動判定はスキップしました。",
+      "入力内容をそのまま整形します。",
+    ].join("\n");
+  }
+
+  if (!draftText) {
+    return "報告ドラフトが空です。内容を入力してから再度お試しください。";
+  }
+
+  return [
+    "GEMINI_API_KEY が未設定、または AI 呼び出しに失敗したため簡易チェックのみ実行しました。",
+    "・入力内容は取得できています。",
+    "・本番利用前に GEMINI_API_KEY を Vercel / .env.local に設定してください。",
+  ].join("\n");
+}
+
 async function generateOmissionFeedback(params: {
   apiKey: string;
   notionText: string;
@@ -61,45 +80,66 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
-  const missing = getMissingEnvVars();
-  if (missing.length > 0) {
-    return NextResponse.json(
-      { ok: false, error: "missing_env_vars", missing },
-      { status: 500 }
-    );
-  }
-
   try {
     const body = (await request.json()) as CheckOmissionsBody;
     const notionText = body.notionText?.trim() || "";
     const draftText = body.draftText?.trim() || "";
 
-    if (!notionText || !draftText) {
+    if (!draftText) {
       return NextResponse.json(
-        { ok: false, error: "notion_text_and_draft_text_required" },
+        { ok: false, error: "draft_text_required" },
         { status: 400 }
       );
     }
 
-    const aiResult = await generateOmissionFeedback({
-      apiKey: process.env.GEMINI_API_KEY || "",
-      notionText,
-      draftText,
-    });
+    if (!notionText) {
+      return NextResponse.json({
+        ok: true,
+        feedback: buildMockOmissionFeedback(notionText, draftText),
+        model: "mock",
+        skipped: true,
+      });
+    }
 
-    return NextResponse.json({
-      ok: true,
-      feedback: aiResult.text,
-      model: aiResult.modelName,
-    });
+    const missing = getMissingEnvVars();
+    if (missing.length > 0) {
+      return NextResponse.json({
+        ok: true,
+        feedback: buildMockOmissionFeedback(notionText, draftText),
+        model: "mock",
+        notConfigured: true,
+        missing,
+      });
+    }
+
+    try {
+      const aiResult = await generateOmissionFeedback({
+        apiKey: process.env.GEMINI_API_KEY || "",
+        notionText,
+        draftText,
+      });
+
+      return NextResponse.json({
+        ok: true,
+        feedback: aiResult.text,
+        model: aiResult.modelName,
+      });
+    } catch (error) {
+      return NextResponse.json({
+        ok: true,
+        feedback: buildMockOmissionFeedback(notionText, draftText),
+        model: "mock",
+        warning: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
   } catch (error) {
     return NextResponse.json(
       {
         ok: false,
-        error: "omission_check_failed",
+        error: "invalid_json",
         message: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      { status: 400 }
     );
   }
 }

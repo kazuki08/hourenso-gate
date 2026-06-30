@@ -1,36 +1,69 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 報連相Gate
 
-## Getting Started
+報連相Gateは、Notionメモを基にLINE上で日報ドラフトを生成し、編集後の確定版を指定先へ転送するPhase 1 MVPです。
 
-First, run the development server:
+## セットアップ
+
+1. `.env.example` を `.env.local` にコピーし、必要値を設定
+2. 依存インストール
+3. 開発サーバー起動
 
 ```bash
+cp .env.example .env.local
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+開発サーバーは `http://localhost:3001` で起動します。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Phase 1 運用手順（LINEでの日報作成〜確定版転送）
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. ユーザーがNotionに当日メモを記録
+2. LINEでBotに `日報作成` と送信
+3. WebhookがNotionメモ（当日更新分）を取得してAIドラフトを返信
+4. ユーザーは返信文をコピー/編集し、そのままLINEで送信
+5. システムは返信を確定版として認識し、`LINE_FINAL_TARGET_ID`（未設定時は `LINE_USER_ID`）へ転送
+6. 確定後、同ユーザーの一時ドラフト状態はクリア
 
-## Learn More
+## Webhookの主要仕様
 
-To learn more about Next.js, take a look at the following resources:
+- エンドポイント: `/api/webhook/line`
+- 必須イベント:
+  - `message`（テキスト）
+  - `follow`
+  - `join`
+- 署名検証:
+  - `x-line-signature` を `LINE_CHANNEL_SECRET` で検証
+  - 不正時は `401 invalid_signature`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Notion取得ロジック（Phase 1）
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- 優先: `NOTION_DAILY_DB_ID` がある場合、当日更新ページをDBクエリ
+- fallback: `NOTION_TEST_PAGE_ID` の固定ページを読み取り
+- 専用プロンプト:
+  - `NOTION_PROMPT_PAGE_ID` がある場合、そのページ内容をドラフト生成時の追加指示として利用
+- 取得0件時:
+  - 処理は継続し、テンプレートドラフトを返却
 
-## Deploy on Vercel
+## 通知チャネル
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+`lib/notifiers.ts` で通知を抽象化:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `notifyToLine()` : 実装済み（LINE Push）
+- `notifyToSlack()` : Phase 1はスタブ
+- `notifyToSms()` : Phase 1はスタブ
+
+## 動作確認（最低限）
+
+1. `npm run build` が成功する
+2. LINEで `日報作成` を送るとドラフト返信される
+3. ドラフト編集後に返信すると転送される
+4. 署名不正リクエストで `401` が返る
+5. Notionデータ0件/AI失敗時でもユーザー向け返信が返る
+
+## TODO（Phase 2以降）
+
+- Slack通知の実装（現在スタブ）
+- SMS通知の実装（現在スタブ）
+- 一時ドラフト状態を永続ストアへ移行（現状はメモリ保持）
+- 本格的なテナント分離/オンボーディング自動化

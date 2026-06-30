@@ -1,7 +1,11 @@
 import { auth } from "@clerk/nextjs/server";
-import { google } from "googleapis";
 import { NextResponse } from "next/server";
 import { getLatestLineLinkRecord, type LineRecipientType } from "@/lib/line-link-store";
+import { getMissingNotifierEnvVars, notifyToLine } from "@/lib/notifiers";
+import {
+  appendReportHistory,
+  getMissingReportHistoryEnvVars,
+} from "@/lib/report-history-store";
 
 type ChecklistState = {
   id: string;
@@ -22,19 +26,8 @@ type SaveToSheetBody = {
 };
 
 function getMissingEnvVars() {
-  const required = [
-    "GOOGLE_CLIENT_EMAIL",
-    "GOOGLE_PRIVATE_KEY",
-    "LINE_CHANNEL_ACCESS_TOKEN",
-  ] as const;
-  const missing: string[] = required.filter((key) => !process.env[key]);
-  const spreadsheetId =
-    process.env.NEXT_PUBLIC_SPREADSHEET_ID ||
-    process.env.NEXT_PUBLIC_DEFAULT_SPREADSHEET_ID ||
-    process.env.GOOGLE_SPREADSHEET_ID;
-  if (!spreadsheetId) {
-    missing.push("NEXT_PUBLIC_SPREADSHEET_ID");
-  }
+  const missing: string[] = [...getMissingReportHistoryEnvVars()];
+  missing.push(...getMissingNotifierEnvVars());
   return missing;
 }
 
@@ -42,25 +35,6 @@ function formatChecklistStates(states: ChecklistState[]) {
   return states
     .map((item) => `${item.checked ? "ON" : "OFF"}: ${item.label}`)
     .join("\n");
-}
-
-async function sendLineMessage(message: string, to: string) {
-  const response = await fetch("https://api.line.me/v2/bot/message/push", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`,
-    },
-    body: JSON.stringify({
-      to,
-      messages: [{ type: "text", text: message }],
-    }),
-  });
-
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`LINE push failed: ${response.status} ${detail}`);
-  }
 }
 
 export async function POST(request: Request) {
@@ -95,37 +69,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const googleAuth = new google.auth.JWT({
-      email: process.env.GOOGLE_CLIENT_EMAIL,
-      key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-    });
-    const sheets = google.sheets({ version: "v4", auth: googleAuth });
-    const spreadsheetId =
-      process.env.NEXT_PUBLIC_SPREADSHEET_ID ||
-      process.env.NEXT_PUBLIC_DEFAULT_SPREADSHEET_ID ||
-      process.env.GOOGLE_SPREADSHEET_ID;
-    const sheetName = (process.env.GOOGLE_SHEET_NAME || "シート1").trim();
-
-    await sheets.spreadsheets.values.append({
-      spreadsheetId,
-      range: `${sheetName}!A:I`,
-      valueInputOption: "RAW",
-      requestBody: {
-        values: [
-          [
-            sentAt,
-            `${toolName} / ${dataDestination} / ${reportDestination}`,
-            formatChecklistStates(checklistStates),
-            formattedMessage,
-            dataDestination,
-            reportDestination,
-            senderName,
-            mode,
-            userId || "",
-          ],
-        ],
-      },
+    await appendReportHistory({
+      sentAt,
+      toolName: `${toolName} / ${dataDestination} / ${reportDestination}`,
+      checklistSummary: formatChecklistStates(checklistStates),
+      formattedMessage,
+      dataDestination,
+      reportDestination,
+      senderName,
+      mode,
+      userId: userId || "",
     });
 
     let lineTargetId = process.env.LINE_USER_ID || "";
@@ -150,7 +103,7 @@ export async function POST(request: Request) {
     }
 
     try {
-      await sendLineMessage(formattedMessage, lineTargetId);
+      await notifyToLine({ to: lineTargetId, message: formattedMessage });
     } catch (lineError) {
       console.error("LINE送信に失敗しました（スプレッドシート保存は成功）", lineError);
       return NextResponse.json(
