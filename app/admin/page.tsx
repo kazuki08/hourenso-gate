@@ -259,10 +259,19 @@ export default function AdminPage() {
               recipientType: "user" | "group";
               linkedAt: string;
             }
-          | { ok: false; error?: string; message?: string };
+          | { ok: false; error?: string; message?: string; missing?: string[] };
 
         if (!response.ok || !data.ok) {
-          setLineLinkMessage("LINE連携状況の取得に失敗しました");
+          const errorData = data as {
+            error?: string;
+            message?: string;
+            missing?: string[];
+          };
+          const detail =
+            errorData.missing?.length
+              ? `不足: ${errorData.missing.join(", ")}`
+              : errorData.message || errorData.error || `HTTP ${response.status}`;
+          setLineLinkMessage(`LINE連携状況の取得に失敗しました（${detail}）`);
           setLineLinkStatus({ linked: false });
           return;
         }
