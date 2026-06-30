@@ -8,3 +8,7 @@ export function normalizeEnvValue(value: string | undefined) {
   }
   return raw;
 }
+
+export function normalizeMultilineEnvValue(value: string | undefined) {
+  return normalizeEnvValue(value).replace(/\\n/g, "\n").replace(/\r/g, "");
+}

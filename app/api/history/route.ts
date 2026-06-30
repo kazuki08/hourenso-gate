@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { google } from "googleapis";
 import { NextResponse } from "next/server";
+import { normalizeEnvValue, normalizeMultilineEnvValue } from "@/lib/env-utils";
 
 type HistoryItem = {
   id: string;
@@ -12,8 +13,13 @@ type HistoryItem = {
 };
 
 function getMissingEnvVars() {
-  const required = ["GOOGLE_CLIENT_EMAIL", "GOOGLE_PRIVATE_KEY"] as const;
-  const missing: string[] = required.filter((key) => !process.env[key]);
+  const missing: string[] = [];
+  if (!normalizeEnvValue(process.env.GOOGLE_CLIENT_EMAIL)) {
+    missing.push("GOOGLE_CLIENT_EMAIL");
+  }
+  if (!normalizeMultilineEnvValue(process.env.GOOGLE_PRIVATE_KEY)) {
+    missing.push("GOOGLE_PRIVATE_KEY");
+  }
   const spreadsheetId =
     process.env.NEXT_PUBLIC_SPREADSHEET_ID ||
     process.env.NEXT_PUBLIC_DEFAULT_SPREADSHEET_ID ||
@@ -62,9 +68,11 @@ export async function GET() {
   }
 
   try {
+    const email = normalizeEnvValue(process.env.GOOGLE_CLIENT_EMAIL);
+    const key = normalizeMultilineEnvValue(process.env.GOOGLE_PRIVATE_KEY);
     const googleAuth = new google.auth.JWT({
-      email: process.env.GOOGLE_CLIENT_EMAIL,
-      key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+      email,
+      key,
       scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
     });
     const sheets = google.sheets({ version: "v4", auth: googleAuth });

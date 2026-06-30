@@ -5,6 +5,7 @@ import {
   type SheetDestination,
 } from "../../../lib/sheet-destinations";
 import { getMissingNotifierEnvVars, notifyToLine } from "@/lib/notifiers";
+import { normalizeEnvValue, normalizeMultilineEnvValue } from "@/lib/env-utils";
 
 type SendReportBody = {
   message?: string;
@@ -32,8 +33,16 @@ function getConfiguredDestinations(): SheetDestination[] {
 }
 
 function getMissingEnvVars() {
-  const required = ["LINE_TARGET_USER_ID", "GOOGLE_CLIENT_EMAIL", "GOOGLE_PRIVATE_KEY"] as const;
-  const missing: string[] = required.filter((key) => !process.env[key]);
+  const missing: string[] = [];
+  if (!normalizeEnvValue(process.env.LINE_TARGET_USER_ID)) {
+    missing.push("LINE_TARGET_USER_ID");
+  }
+  if (!normalizeEnvValue(process.env.GOOGLE_CLIENT_EMAIL)) {
+    missing.push("GOOGLE_CLIENT_EMAIL");
+  }
+  if (!normalizeMultilineEnvValue(process.env.GOOGLE_PRIVATE_KEY)) {
+    missing.push("GOOGLE_PRIVATE_KEY");
+  }
   missing.push(...getMissingNotifierEnvVars());
   return missing;
 }
@@ -43,8 +52,8 @@ async function appendToGoogleSheet(params: {
   toolName: string;
   message: string;
 }) {
-  const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
-  const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
+  const clientEmail = normalizeEnvValue(process.env.GOOGLE_CLIENT_EMAIL);
+  const privateKey = normalizeMultilineEnvValue(process.env.GOOGLE_PRIVATE_KEY);
   if (!clientEmail || !privateKey) {
     throw new Error("Google credentials are not configured");
   }
@@ -120,7 +129,7 @@ export async function POST(request: Request) {
     }
 
     await notifyToLine({
-      to: process.env.LINE_TARGET_USER_ID || "",
+      to: normalizeEnvValue(process.env.LINE_TARGET_USER_ID),
       message,
     });
     await appendToGoogleSheet({

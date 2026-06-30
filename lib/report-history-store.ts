@@ -1,4 +1,5 @@
 import { google } from "googleapis";
+import { normalizeEnvValue, normalizeMultilineEnvValue } from "@/lib/env-utils";
 
 export type ReportHistoryPayload = {
   sentAt: string;
@@ -27,7 +28,13 @@ function getSheetName() {
 
 export function getMissingReportHistoryEnvVars() {
   const required = ["GOOGLE_CLIENT_EMAIL", "GOOGLE_PRIVATE_KEY"] as const;
-  const missing: string[] = required.filter((key) => !process.env[key]);
+  const missing: string[] = [];
+  if (!normalizeEnvValue(process.env.GOOGLE_CLIENT_EMAIL)) {
+    missing.push("GOOGLE_CLIENT_EMAIL");
+  }
+  if (!normalizeMultilineEnvValue(process.env.GOOGLE_PRIVATE_KEY)) {
+    missing.push("GOOGLE_PRIVATE_KEY");
+  }
   if (!getSpreadsheetId()) {
     missing.push("NEXT_PUBLIC_SPREADSHEET_ID");
   }
@@ -35,9 +42,15 @@ export function getMissingReportHistoryEnvVars() {
 }
 
 function createSheetsClient() {
+  const email = normalizeEnvValue(process.env.GOOGLE_CLIENT_EMAIL);
+  const key = normalizeMultilineEnvValue(process.env.GOOGLE_PRIVATE_KEY);
+  if (!email || !key) {
+    throw new Error("google_credentials_not_configured");
+  }
+
   const auth = new google.auth.JWT({
-    email: process.env.GOOGLE_CLIENT_EMAIL,
-    key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+    email,
+    key,
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   });
   return google.sheets({ version: "v4", auth });

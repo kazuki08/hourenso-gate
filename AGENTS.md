@@ -14,6 +14,8 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - Handle `message`, `follow`, `join` events safely; avoid crash-on-error behavior.
 - For missing env values, return actionable `missing_env_vars` with key names.
 - After substantial edits, run `npm run build` and report impact briefly.
+- Never include real secrets in `.env.example`; use placeholders only (`xxx`, `<REDACTED>`, sample formats).
+- Before commit/push, re-check staged diff to ensure `.env.example`, docs, and logs contain no credential/token values.
 
 詳細な実装手順・優先順位・テンプレートは `CURSOR.md` を参照すること。
 <!-- END:hourenso-mvp-rules -->
