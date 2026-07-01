@@ -148,6 +148,17 @@ function toJstDayRange() {
   return { start, end };
 }
 
+function isWithinRangeByIso(value: string | undefined, start: string, end: string) {
+  if (!value) return false;
+  const targetMs = Date.parse(value);
+  const startMs = Date.parse(start);
+  const endMs = Date.parse(end);
+  if (!Number.isFinite(targetMs) || !Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+    return false;
+  }
+  return targetMs >= startMs && targetMs < endMs;
+}
+
 async function queryDatabaseByLastEditedTime(params: {
   databaseId: string;
   start: string;
@@ -307,7 +318,7 @@ async function queryDatabaseLatestPages(params: {
   }
 
   const queryPayload = {
-    page_size: 50,
+    page_size: 100,
     sorts: [{ timestamp: "last_edited_time", direction: "descending" as const }],
   };
 
@@ -317,6 +328,8 @@ async function queryDatabaseLatestPages(params: {
   ];
 
   for (const endpoint of endpoints) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -325,7 +338,9 @@ async function queryDatabaseLatestPages(params: {
         "Notion-Version": "2022-06-28",
       },
       body: JSON.stringify(queryPayload),
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
     const text = await response.text();
     if (!response.ok) {
       continue;
@@ -404,11 +419,8 @@ async function fetchDailyMemoFromDatabase(notion: Client, params: DailyMemoParam
   const createdProp = process.env.NOTION_DAILY_DATE_PROPERTY || "最終編集日時";
   const userHint = params.notionUserHint || params.lineUserId || "";
   const { start, end } = toJstDayRange();
-
-  const fetchedPages = await queryDatabaseByLastEditedTime({
+  const fetchedPages = await queryDatabaseLatestPages({
     databaseId: dbId,
-    start,
-    end,
     notionApiKeyOverride: params.notionApiKeyOverride,
   });
 
@@ -416,10 +428,13 @@ async function fetchDailyMemoFromDatabase(notion: Client, params: DailyMemoParam
   // ユーザー紐付け絞り込みは明示的に有効化したときのみ適用する。
   const shouldFilterByUser =
     process.env.NOTION_DAILY_FILTER_BY_USER === "true" && userHint.trim().length > 0;
-  const pages = shouldFilterByUser
+  const pages = (shouldFilterByUser
     ? fetchedPages.filter((page) => maybeMatchUser(page, userHint))
-    : fetchedPages;
-  const pagesWithoutUserFilter = fetchedPages;
+    : fetchedPages
+  ).filter((page) => isWithinRangeByIso(page.last_edited_time, start, end));
+  const pagesWithoutUserFilter = fetchedPages.filter((page) =>
+    isWithinRangeByIso(page.last_edited_time, start, end)
+  );
 
   // 本日更新が0件でも、外部運用では「最新タスク一覧」を日報化したい要件があるため、
   // 直近更新順の再取得を行う。
