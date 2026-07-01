@@ -30,6 +30,7 @@ import {
 import {
   appendLineMemberLinkRecord,
   getLatestActiveMemberLink,
+  getLatestMemberLink,
   getMissingLineMemberLinkEnvVars,
 } from "@/lib/line-member-link-store";
 
@@ -195,6 +196,28 @@ function parseMemberLinkCommand(text: string) {
 
 function createInviteCode() {
   return crypto.randomBytes(5).toString("hex").toUpperCase();
+}
+
+function parseInviteRevokeCommand(text: string) {
+  const normalized = text.trim();
+  const match = normalized.match(/^(?:招待無効化|招待取消)\s+([A-Za-z0-9_-]{6,32})$/);
+  if (!match) return null;
+  return match[1].toUpperCase();
+}
+
+function isMemberUnlinkCommand(text: string) {
+  const normalized = text.trim();
+  return normalized === "連携解除" || normalized === "解除";
+}
+
+function isCurrentLinkCheckCommand(text: string) {
+  const normalized = text.trim();
+  return normalized === "現在の連携先確認" || normalized === "連携先確認";
+}
+
+function maskLineId(value: string) {
+  if (value.length <= 8) return value;
+  return `${value.slice(0, 4)}...${value.slice(-4)}`;
 }
 
 function sanitizeFinalReportText(rawText: string) {
@@ -644,6 +667,129 @@ async function handleMessageEvent(
     }
   }
 
+  const inviteRevokeCode = parseInviteRevokeCommand(text);
+  if (inviteRevokeCode) {
+    if (!lineUserId) {
+      await replyLineMessage(replyToken, "このコマンドは Bot の1:1トークで実行してください。");
+      return { status: "skipped", reason: "invite_revoke_user_id_missing" };
+    }
+    const missing = getMissingLineInviteEnvVars();
+    if (missing.length > 0) {
+      await replyLineMessage(
+        replyToken,
+        `招待無効化に必要な環境変数が不足しています: ${missing.join(", ")}`
+      );
+      return { status: "skipped", reason: "missing_env_for_invite_revoke" };
+    }
+    try {
+      const invite = await getLatestInviteByCode(inviteRevokeCode);
+      if (!invite) {
+        await replyLineMessage(replyToken, "指定コードが見つかりません。");
+        return { status: "skipped", reason: "invite_revoke_not_found" };
+      }
+      if (invite.createdByLineUserId !== lineUserId) {
+        await replyLineMessage(
+          replyToken,
+          "この招待コードはあなたが発行したものではないため無効化できません。"
+        );
+        return { status: "skipped", reason: "invite_revoke_not_owner" };
+      }
+      if (invite.status !== "active") {
+        await replyLineMessage(replyToken, "この招待コードはすでに無効です。");
+        return { status: "skipped", reason: "invite_revoke_already_inactive" };
+      }
+
+      await appendLineInviteRecord({
+        ...invite,
+        createdAt: toJstIsoString(),
+        status: "revoked",
+      });
+      await replyLineMessage(replyToken, `招待コード ${inviteRevokeCode} を無効化しました。`);
+      return { status: "skipped", reason: "invite_revoked" };
+    } catch (error) {
+      await replyLineMessage(
+        replyToken,
+        `招待コード無効化に失敗しました。${error instanceof Error ? error.message : "unknown"}`
+      );
+      return { status: "skipped", reason: "invite_revoke_failed" };
+    }
+  }
+
+  if (isMemberUnlinkCommand(text)) {
+    if (!lineUserId) {
+      await replyLineMessage(replyToken, "このコマンドは Bot の1:1トークで実行してください。");
+      return { status: "skipped", reason: "member_unlink_user_id_missing" };
+    }
+    const missing = getMissingLineMemberLinkEnvVars();
+    if (missing.length > 0) {
+      await replyLineMessage(
+        replyToken,
+        `連携解除に必要な環境変数が不足しています: ${missing.join(", ")}`
+      );
+      return { status: "skipped", reason: "missing_env_for_member_unlink" };
+    }
+    try {
+      const latestLink = await getLatestMemberLink(lineUserId);
+      if (!latestLink || latestLink.status !== "active") {
+        await replyLineMessage(replyToken, "現在有効な連携はありません。");
+        return { status: "skipped", reason: "member_unlink_no_active_link" };
+      }
+      await appendLineMemberLinkRecord({
+        ...latestLink,
+        createdAt: toJstIsoString(),
+        status: "inactive",
+      });
+      await replyLineMessage(replyToken, "連携を解除しました。再設定は `連携 <コード>` を実行してください。");
+      return { status: "skipped", reason: "member_unlinked" };
+    } catch (error) {
+      await replyLineMessage(
+        replyToken,
+        `連携解除に失敗しました。${error instanceof Error ? error.message : "unknown"}`
+      );
+      return { status: "skipped", reason: "member_unlink_failed" };
+    }
+  }
+
+  if (isCurrentLinkCheckCommand(text)) {
+    if (!lineUserId) {
+      await replyLineMessage(replyToken, "このコマンドは Bot の1:1トークで実行してください。");
+      return { status: "skipped", reason: "member_link_check_user_id_missing" };
+    }
+    const missing = getMissingLineMemberLinkEnvVars();
+    if (missing.length > 0) {
+      await replyLineMessage(
+        replyToken,
+        `連携先確認に必要な環境変数が不足しています: ${missing.join(", ")}`
+      );
+      return { status: "skipped", reason: "missing_env_for_member_link_check" };
+    }
+    try {
+      const latestLink = await getLatestMemberLink(lineUserId);
+      if (!latestLink || latestLink.status !== "active") {
+        await replyLineMessage(
+          replyToken,
+          "現在の有効な連携先はありません。上司から受け取ったコードで `連携 <コード>` を実行してください。"
+        );
+        return { status: "skipped", reason: "member_link_check_no_active_link" };
+      }
+      await replyLineMessage(
+        replyToken,
+        [
+          `現在の連携先タイプ: ${latestLink.targetRecipientType === "group" ? "グループ" : "個人"}`,
+          `現在の連携先ID: ${maskLineId(latestLink.targetLineId)}`,
+          `最終更新: ${latestLink.createdAt}`,
+        ].join("\n")
+      );
+      return { status: "skipped", reason: "member_link_check_completed" };
+    } catch (error) {
+      await replyLineMessage(
+        replyToken,
+        `連携先確認に失敗しました。${error instanceof Error ? error.message : "unknown"}`
+      );
+      return { status: "skipped", reason: "member_link_check_failed" };
+    }
+  }
+
   if (isCreateDraftTrigger(text)) {
     let notionText = "";
     let customPrompt = "";
@@ -745,6 +891,13 @@ async function handleMessageEvent(
       "転送先が未設定です。上司は `部下招待`、部下は `連携 <コード>` を実行してください。"
     );
     return { status: "skipped" as const, reason: "forward_target_missing" };
+  }
+  if (lineUserId && forwardTo === lineUserId) {
+    await replyLineMessage(
+      replyToken,
+      "現在の連携先が自分自身になっています。上司側で `部下招待`、部下側で `連携 <コード>` を再実行してください。"
+    );
+    return { status: "skipped" as const, reason: "self_forward_blocked" };
   }
 
   const finalBody = sanitizeFinalReportText(text);

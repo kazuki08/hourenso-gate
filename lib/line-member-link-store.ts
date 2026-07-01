@@ -79,6 +79,14 @@ export async function appendLineMemberLinkRecord(record: LineMemberLinkRecord) {
 }
 
 export async function getLatestActiveMemberLink(memberLineUserId: string) {
+  const latest = await getLatestMemberLink(memberLineUserId);
+  if (!latest || latest.status !== "active") {
+    return null;
+  }
+  return latest;
+}
+
+export async function getLatestMemberLink(memberLineUserId: string) {
   const normalizedMemberId = memberLineUserId.trim();
   if (!normalizedMemberId) {
     return null;
@@ -90,7 +98,7 @@ export async function getLatestActiveMemberLink(memberLineUserId: string) {
   });
   const rows = response.data.values ?? [];
   const records = rows
-    .filter((row) => (row[1] || "") === normalizedMemberId && (row[6] || "active") === "active")
+    .filter((row) => (row[1] || "") === normalizedMemberId)
     .map((row) => ({
       createdAt: row[0] || "",
       memberLineUserId: row[1] || "",
@@ -98,9 +106,8 @@ export async function getLatestActiveMemberLink(memberLineUserId: string) {
       targetRecipientType: (row[3] === "group" ? "group" : "user") as LineRecipientType,
       linkedByLineUserId: row[4] || "",
       sourceInviteCode: row[5] || "",
-      status: "active" as const,
+      status: (row[6] === "inactive" ? "inactive" : "active") as "active" | "inactive",
     }))
-    .filter((row) => row.targetLineId !== "")
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   return records[0] || null;
