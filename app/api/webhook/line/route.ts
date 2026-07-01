@@ -104,6 +104,7 @@ type MessageEventResult =
 const WEBHOOK_LOG_PREFIX = "[LINE Webhook]";
 const WEBHOOK_EXTERNAL_TIMEOUT_MS = 3500;
 const NOTION_FETCH_TIMEOUT_MS = 12000;
+const GEMINI_GENERATE_TIMEOUT_MS = 12000;
 const BOT_INFO_CACHE_TTL_MS = 1000 * 60 * 60 * 6;
 let cachedLineAddFriendUrl = "";
 let cachedLineAddFriendUrlAt = 0;
@@ -523,7 +524,7 @@ function buildFallbackDraft(notionText: string) {
   const memo = notionText.trim() || "（本日の更新メモが見つかりませんでした）";
   return [
     "【報告】本日の進捗を共有します。",
-    memo.length > 220 ? `${memo.slice(0, 220)}...` : memo,
+    memo,
     "",
     "※必要に応じて加筆・修正して、このまま返信してください。",
   ].join("\n");
@@ -1634,7 +1635,7 @@ async function handleMessageEvent(
     try {
       draftText = await withTimeout(
         generateDraftWithGemini({ notionText, customPrompt }),
-        WEBHOOK_EXTERNAL_TIMEOUT_MS,
+        GEMINI_GENERATE_TIMEOUT_MS,
         "gemini_generate"
       );
     } catch {
