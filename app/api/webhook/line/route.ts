@@ -43,6 +43,17 @@ import {
   getLatestActiveOrganizationByLineUserId,
   getMissingLineOrganizationEnvVars,
 } from "@/lib/line-organization-store";
+import {
+  appendLineNotionConnectionRecord,
+  getLatestActiveLineNotionConnection,
+  getLatestLineNotionConnection,
+  getMissingLineNotionConnectionEnvVars,
+} from "@/lib/line-notion-connection-store";
+import {
+  buildNotionOAuthAuthorizeUrl,
+  createNotionOAuthState,
+  getMissingNotionOAuthEnvVars,
+} from "@/lib/notion-oauth";
 
 type LineWebhookEvent = {
   type?: string;
@@ -329,6 +340,21 @@ function isOrganizationCheckCommand(text: string) {
   return normalized === "組織確認" || normalized === "組織名確認";
 }
 
+function isNotionConnectStartCommand(text: string) {
+  const normalized = text.trim();
+  return normalized === "Notion連携開始" || normalized === "ノーション連携開始";
+}
+
+function isNotionConnectStatusCommand(text: string) {
+  const normalized = text.trim();
+  return normalized === "Notion連携確認" || normalized === "ノーション連携確認";
+}
+
+function isNotionConnectDisconnectCommand(text: string) {
+  const normalized = text.trim();
+  return normalized === "Notion連携解除" || normalized === "ノーション連携解除";
+}
+
 function isHelpCommand(text: string) {
   const normalized = text.trim();
   return normalized === "ヘルプ" || normalized === "help" || normalized === "使い方";
@@ -540,6 +566,7 @@ async function handleMessageEvent(
       [
         "【部下向け】",
         "・日報作成",
+        "・Notion連携開始 / Notion連携確認 / Notion連携解除",
         "・連携 <コード>",
         "・現在の連携先確認",
         "・連携解除",
@@ -559,6 +586,120 @@ async function handleMessageEvent(
       ].join("\n")
     );
     return { status: "skipped", reason: "help_shown" };
+  }
+
+  if (isNotionConnectStartCommand(text)) {
+    if (!lineUserId) {
+      await replyLineMessage(replyToken, "このコマンドは Bot の1:1トークで実行してください。");
+      return { status: "skipped", reason: "notion_connect_start_user_missing" };
+    }
+    const missing = [
+      ...getMissingNotionOAuthEnvVars(),
+      ...getMissingLineNotionConnectionEnvVars(),
+    ];
+    if (missing.length > 0) {
+      await replyLineMessage(
+        replyToken,
+        `Notion連携開始に必要な環境変数が不足しています: ${Array.from(new Set(missing)).join(", ")}`
+      );
+      return { status: "skipped", reason: "missing_env_for_notion_connect_start" };
+    }
+    try {
+      const state = createNotionOAuthState(lineUserId);
+      const authUrl = buildNotionOAuthAuthorizeUrl(state);
+      await replyLineMessage(
+        replyToken,
+        [
+          "以下URLを開いてNotion連携を許可してください。",
+          authUrl,
+          "許可後、このLINEに完了通知が届きます。",
+        ].join("\n")
+      );
+      return { status: "skipped", reason: "notion_connect_start_shown" };
+    } catch (error) {
+      await replyLineMessage(
+        replyToken,
+        `Notion連携開始に失敗しました。${error instanceof Error ? error.message : "unknown"}`
+      );
+      return { status: "skipped", reason: "notion_connect_start_failed" };
+    }
+  }
+
+  if (isNotionConnectStatusCommand(text)) {
+    if (!lineUserId) {
+      await replyLineMessage(replyToken, "このコマンドは Bot の1:1トークで実行してください。");
+      return { status: "skipped", reason: "notion_connect_status_user_missing" };
+    }
+    const missing = getMissingLineNotionConnectionEnvVars();
+    if (missing.length > 0) {
+      await replyLineMessage(
+        replyToken,
+        `Notion連携確認に必要な環境変数が不足しています: ${missing.join(", ")}`
+      );
+      return { status: "skipped", reason: "missing_env_for_notion_connect_status" };
+    }
+    try {
+      const latest = await getLatestLineNotionConnection(lineUserId);
+      if (!latest || latest.status !== "active") {
+        await replyLineMessage(
+          replyToken,
+          "Notionは未連携です。`Notion連携開始` を実行してください。"
+        );
+        return { status: "skipped", reason: "notion_connect_not_active" };
+      }
+      await replyLineMessage(
+        replyToken,
+        `Notion連携済みです。\nworkspace: ${latest.workspaceName || latest.workspaceId || "unknown"}\n最終更新: ${latest.createdAt}`
+      );
+      return { status: "skipped", reason: "notion_connect_status_shown" };
+    } catch (error) {
+      await replyLineMessage(
+        replyToken,
+        `Notion連携確認に失敗しました。${error instanceof Error ? error.message : "unknown"}`
+      );
+      return { status: "skipped", reason: "notion_connect_status_failed" };
+    }
+  }
+
+  if (isNotionConnectDisconnectCommand(text)) {
+    if (!lineUserId) {
+      await replyLineMessage(replyToken, "このコマンドは Bot の1:1トークで実行してください。");
+      return { status: "skipped", reason: "notion_connect_disconnect_user_missing" };
+    }
+    const missing = getMissingLineNotionConnectionEnvVars();
+    if (missing.length > 0) {
+      await replyLineMessage(
+        replyToken,
+        `Notion連携解除に必要な環境変数が不足しています: ${missing.join(", ")}`
+      );
+      return { status: "skipped", reason: "missing_env_for_notion_connect_disconnect" };
+    }
+    try {
+      const latest = await getLatestLineNotionConnection(lineUserId);
+      if (!latest || latest.status !== "active") {
+        await replyLineMessage(replyToken, "現在有効なNotion連携はありません。");
+        return { status: "skipped", reason: "notion_connect_disconnect_no_active" };
+      }
+      await appendLineNotionConnectionRecord({
+        createdAt: toJstIsoString(),
+        lineUserId,
+        status: "inactive",
+        workspaceId: latest.workspaceId,
+        workspaceName: latest.workspaceName,
+        accessToken: "",
+        botId: latest.botId,
+        updatedBy: lineUserId,
+        note: "manual_disconnect",
+      });
+      await replyLineMessage(replyToken, "Notion連携を解除しました。");
+      return { status: "skipped", reason: "notion_connect_disconnected" };
+    } catch (error) {
+      await replyLineMessage(
+        replyToken,
+        `Notion連携解除に失敗しました。${error instanceof Error ? error.message : "unknown"}`
+      );
+      return { status: "skipped", reason: "notion_connect_disconnect_failed" };
+    }
   }
 
   if (isForwardSettingCheckCommand(text)) {
@@ -1165,10 +1306,18 @@ async function handleMessageEvent(
     let notionText = "";
     let customPrompt = "";
     let noMemoNotice = "";
+    let notionApiKeyOverride = "";
 
     try {
+      if (lineUserId) {
+        const connection = await getLatestActiveLineNotionConnection(lineUserId);
+        if (connection?.accessToken) {
+          notionApiKeyOverride = connection.accessToken;
+        }
+      }
+
       const notionData = await withTimeout(
-        getNotionDailyMemo({ lineUserId: actorId }),
+        getNotionDailyMemo({ lineUserId: actorId, notionApiKeyOverride }),
         WEBHOOK_EXTERNAL_TIMEOUT_MS,
         "notion_fetch"
       );
@@ -1179,7 +1328,12 @@ async function handleMessageEvent(
       }
     } catch (error) {
       const reason = error instanceof Error ? error.message : "notion_fetch_failed";
-      noMemoNotice = `Notion取得に失敗したためテンプレートを返します。(${reason})`;
+      if (String(reason).includes("missing_env_var:NOTION_API_KEY")) {
+        noMemoNotice =
+          "Notion未連携です。`Notion連携開始` を実行して連携後にもう一度 `日報作成` を送ってください。";
+      } else {
+        noMemoNotice = `Notion取得に失敗したためテンプレートを返します。(${reason})`;
+      }
     }
 
     let draftText = "";

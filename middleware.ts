@@ -5,6 +5,7 @@ const isPublicRoute = createRouteMatcher([
   "/",
   "/api/webhook(.*)",
   "/api/webhook/line(.*)",
+  "/api/notion/oauth/callback(.*)",
 ]);
 
 function isEmbeddedWebView(userAgent: string) {

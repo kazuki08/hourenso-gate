@@ -26,6 +26,7 @@ const NOTION_LOG_PREFIX = "[NotionPhase1]";
 export type DailyMemoParams = {
   lineUserId?: string;
   notionUserHint?: string;
+  notionApiKeyOverride?: string;
 };
 
 function richTextToPlainText(
@@ -105,8 +106,8 @@ async function collectBlockTexts(notion: Client, block: NotionBlock): Promise<st
   return lines;
 }
 
-function getNotionClient() {
-  const apiKey = normalizeEnvValue(process.env.NOTION_API_KEY);
+function getNotionClient(apiKeyOverride?: string) {
+  const apiKey = normalizeEnvValue(apiKeyOverride || process.env.NOTION_API_KEY);
   if (!apiKey) {
     throw new Error("missing_env_var:NOTION_API_KEY");
   }
@@ -149,8 +150,9 @@ async function queryDatabaseByLastEditedTime(params: {
   databaseId: string;
   start: string;
   end: string;
+  notionApiKeyOverride?: string;
 }) {
-  const apiKey = normalizeEnvValue(process.env.NOTION_API_KEY);
+  const apiKey = normalizeEnvValue(params.notionApiKeyOverride || process.env.NOTION_API_KEY);
   if (!apiKey) {
     throw new Error("missing_env_var:NOTION_API_KEY");
   }
@@ -350,6 +352,7 @@ async function fetchDailyMemoFromDatabase(notion: Client, params: DailyMemoParam
     databaseId: dbId,
     start,
     end,
+    notionApiKeyOverride: params.notionApiKeyOverride,
   });
 
   // Phase 1ではタイトル一致を必須条件にしない。
@@ -423,7 +426,7 @@ export function getMissingNotionPhase1EnvVars() {
 }
 
 export async function getNotionDailyMemo(params: DailyMemoParams = {}) {
-  const notion = getNotionClient();
+  const notion = getNotionClient(params.notionApiKeyOverride);
   if (process.env.NOTION_DAILY_DB_ID) {
     try {
       return await fetchDailyMemoFromDatabase(notion, params);
