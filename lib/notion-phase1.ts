@@ -344,13 +344,24 @@ async function queryDatabaseLatestPages(params: {
 async function fetchPromptTextFromPage(notion: Client) {
   const promptPageId = process.env.NOTION_PROMPT_PAGE_ID || "";
   if (!promptPageId) return "";
-  const blocks = await listAllChildren(notion, promptPageId);
-  const lines: string[] = [];
-  for (const block of blocks) {
-    const childLines = await collectBlockTexts(notion, block);
-    lines.push(...childLines);
+  try {
+    const blocks = await listAllChildren(notion, promptPageId);
+    const lines: string[] = [];
+    for (const block of blocks) {
+      const childLines = await collectBlockTexts(notion, block);
+      lines.push(...childLines);
+    }
+    return lines.join("\n").trim();
+  } catch (error) {
+    console.error(
+      `${NOTION_LOG_PREFIX} prompt page fetch failed`,
+      JSON.stringify({
+        promptPageId,
+        message: error instanceof Error ? error.message : "unknown",
+      })
+    );
+    return "";
   }
-  return lines.join("\n").trim();
 }
 
 function getPageTitle(page: NotionPage) {
@@ -508,6 +519,76 @@ export async function discoverLatestAccessibleNotionDatabaseId(notionApiKeyOverr
   }
   const first = (data.results || []).find((item) => item.object === "database" && item.id);
   return first?.id || "";
+}
+
+type NotionObjectDetail = {
+  object?: "page" | "database" | "data_source" | string;
+  id?: string;
+  parent?: {
+    type?: string;
+    database_id?: string;
+    data_source_id?: string;
+  };
+};
+
+async function fetchNotionObjectDetail(params: {
+  id: string;
+  endpoint: "pages" | "databases" | "data_sources";
+  apiKey: string;
+}) {
+  const response = await fetch(`https://api.notion.com/v1/${params.endpoint}/${params.id}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${params.apiKey}`,
+      "Notion-Version": "2022-06-28",
+    },
+  });
+  if (!response.ok) return null;
+  const text = await response.text();
+  try {
+    return JSON.parse(text) as NotionObjectDetail;
+  } catch {
+    return null;
+  }
+}
+
+export async function resolveNotionDailyDatabaseId(input: {
+  notionApiKeyOverride: string;
+  candidateId: string;
+}) {
+  const apiKey = normalizeEnvValue(input.notionApiKeyOverride || process.env.NOTION_API_KEY);
+  const candidateId = normalizeEnvValue(input.candidateId)?.replace(/-/g, "") || "";
+  if (!apiKey || !candidateId || !/^[0-9a-fA-F]{32}$/.test(candidateId)) {
+    return "";
+  }
+
+  const directDatabase = await fetchNotionObjectDetail({
+    id: candidateId,
+    endpoint: "databases",
+    apiKey,
+  });
+  if (directDatabase?.object === "database") return candidateId;
+
+  const directDataSource = await fetchNotionObjectDetail({
+    id: candidateId,
+    endpoint: "data_sources",
+    apiKey,
+  });
+  if (directDataSource?.object === "data_source") return candidateId;
+
+  const page = await fetchNotionObjectDetail({
+    id: candidateId,
+    endpoint: "pages",
+    apiKey,
+  });
+  if (!page?.parent) return "";
+  if (page.parent.type === "database_id" && page.parent.database_id) {
+    return page.parent.database_id.replace(/-/g, "");
+  }
+  if (page.parent.type === "data_source_id" && page.parent.data_source_id) {
+    return page.parent.data_source_id.replace(/-/g, "");
+  }
+  return "";
 }
 
 async function fetchFallbackPageMemo(notion: Client) {

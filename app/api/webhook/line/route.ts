@@ -9,7 +9,11 @@ import {
 } from "@/lib/line-link-store";
 import { clearPendingDraft, getPendingDraft, setPendingDraft } from "@/lib/line-draft-store";
 import { notifyToLine } from "@/lib/notifiers";
-import { discoverLatestAccessibleNotionDatabaseId, getNotionDailyMemo } from "@/lib/notion-phase1";
+import {
+  discoverLatestAccessibleNotionDatabaseId,
+  getNotionDailyMemo,
+  resolveNotionDailyDatabaseId,
+} from "@/lib/notion-phase1";
 import { DEFAULT_AI_FORMAT_PROMPT } from "@/lib/prompts";
 import {
   appendReportHistory,
@@ -763,11 +767,16 @@ async function handleMessageEvent(
         );
         return { status: "skipped", reason: "daily_db_set_notion_not_connected" };
       }
+      const resolvedDatabaseId =
+        (await resolveNotionDailyDatabaseId({
+          notionApiKeyOverride: connection.accessToken,
+          candidateId: dailyDbId,
+        })) || dailyDbId;
       await withTimeout(
         getNotionDailyMemo({
           lineUserId,
           notionApiKeyOverride: connection.accessToken,
-          notionDatabaseIdOverride: dailyDbId,
+          notionDatabaseIdOverride: resolvedDatabaseId,
           disableFallbackPage: true,
         }),
         WEBHOOK_EXTERNAL_TIMEOUT_MS,
@@ -776,7 +785,7 @@ async function handleMessageEvent(
       await appendLineNotionDailyDbRecord({
         createdAt: toJstIsoString(),
         lineUserId,
-        databaseId: dailyDbId,
+        databaseId: resolvedDatabaseId,
         status: "active",
         updatedBy: lineUserId,
         note: "manual_set",
@@ -785,7 +794,7 @@ async function handleMessageEvent(
         replyToken,
         [
           "日報DBを設定しました。",
-          `databaseId: ${dailyDbId}`,
+          `databaseId: ${resolvedDatabaseId}`,
           "次回からこのDBで `日報作成` します。",
         ].join("\n")
       );
