@@ -297,6 +297,50 @@ async function queryDatabaseByLastEditedTime(params: {
   return pages;
 }
 
+async function queryDatabaseLatestPages(params: {
+  databaseId: string;
+  notionApiKeyOverride?: string;
+}) {
+  const apiKey = normalizeEnvValue(params.notionApiKeyOverride || process.env.NOTION_API_KEY);
+  if (!apiKey) {
+    throw new Error("missing_env_var:NOTION_API_KEY");
+  }
+
+  const queryPayload = {
+    page_size: 50,
+    sorts: [{ timestamp: "last_edited_time", direction: "descending" as const }],
+  };
+
+  const endpoints = [
+    `https://api.notion.com/v1/databases/${params.databaseId}/query`,
+    `https://api.notion.com/v1/data_sources/${params.databaseId}/query`,
+  ];
+
+  for (const endpoint of endpoints) {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28",
+      },
+      body: JSON.stringify(queryPayload),
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      continue;
+    }
+    try {
+      const data = JSON.parse(text) as NotionDatabaseQueryResponse;
+      return (data.results || []).filter((row) => row.object === "page");
+    } catch {
+      throw new Error("notion_db_query_invalid_json");
+    }
+  }
+
+  throw new Error("notion_db_query_all_endpoints_failed");
+}
+
 async function fetchPromptTextFromPage(notion: Client) {
   const promptPageId = process.env.NOTION_PROMPT_PAGE_ID || "";
   if (!promptPageId) return "";
@@ -364,18 +408,34 @@ async function fetchDailyMemoFromDatabase(notion: Client, params: DailyMemoParam
   const pages = shouldFilterByUser
     ? fetchedPages.filter((page) => maybeMatchUser(page, userHint))
     : fetchedPages;
-  if (pages.length === 0) {
+
+  // 本日更新が0件でも、外部運用では「最新タスク一覧」を日報化したい要件があるため、
+  // 直近更新順の再取得を行う。
+  let effectivePages = pages;
+  let selectionMode = "today_last_edited";
+  if (effectivePages.length === 0) {
+    const latestPages = await queryDatabaseLatestPages({
+      databaseId: dbId,
+      notionApiKeyOverride: params.notionApiKeyOverride,
+    });
+    effectivePages = shouldFilterByUser
+      ? latestPages.filter((page) => maybeMatchUser(page, userHint))
+      : latestPages;
+    selectionMode = "latest_fallback";
+  }
+
+  if (effectivePages.length === 0) {
     return {
       content: "",
       source: "database",
       pageCount: 0,
       promptFromNotion: await fetchPromptTextFromPage(notion),
-      note: `db:${dbId}, filter:last_edited_time(JST), dateProperty:${createdProp}`,
+      note: `db:${dbId}, filter:last_edited_time(JST), mode:${selectionMode}, dateProperty:${createdProp}`,
     };
   }
 
   const lines: string[] = [];
-  for (const page of pages.slice(0, 5)) {
+  for (const page of effectivePages.slice(0, 5)) {
     const title = getPageTitle(page) || "無題メモ";
     lines.push(`## ${title}`);
     const blocks = await listAllChildren(notion, page.id);
@@ -389,9 +449,9 @@ async function fetchDailyMemoFromDatabase(notion: Client, params: DailyMemoParam
   return {
     content: lines.join("\n").trim(),
     source: "database",
-    pageCount: pages.length,
+    pageCount: effectivePages.length,
     promptFromNotion: await fetchPromptTextFromPage(notion),
-    note: `db:${dbId}, filter:last_edited_time(JST), dateProperty:${createdProp}`,
+    note: `db:${dbId}, filter:last_edited_time(JST), mode:${selectionMode}, dateProperty:${createdProp}`,
   };
 }
 
