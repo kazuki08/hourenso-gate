@@ -161,6 +161,16 @@ function isForwardSettingCheckCommand(text: string) {
   return normalized === "設定確認" || normalized === "送信先設定確認";
 }
 
+function isGroupRegisterCommand(text: string) {
+  const normalized = text.trim();
+  return normalized === "グループ登録" || normalized === "送信先登録 グループ";
+}
+
+function isGroupCheckCommand(text: string) {
+  const normalized = text.trim();
+  return normalized === "グループ確認" || normalized === "送信先確認 グループ";
+}
+
 function sanitizeFinalReportText(rawText: string) {
   const trimmed = rawText.trim();
   if (!trimmed) return "";
@@ -376,6 +386,97 @@ async function handleMessageEvent(
         `送信先設定の確認に失敗しました。${error instanceof Error ? error.message : "unknown"}`
       );
       return { status: "skipped", reason: "setting_check_failed" };
+    }
+  }
+
+  if (isGroupRegisterCommand(text)) {
+    const groupId = event.source?.groupId || "";
+    if (!groupId) {
+      await replyLineMessage(
+        replyToken,
+        "このコマンドはグループトーク内で実行してください。"
+      );
+      return { status: "skipped", reason: "group_register_outside_group" };
+    }
+
+    const clerkUserId = resolveClerkUserId(request);
+    if (!clerkUserId) {
+      await replyLineMessage(
+        replyToken,
+        "連携ユーザーIDが未設定です。Webhook URL の clerkUserId を確認してください。"
+      );
+      return { status: "skipped", reason: "clerk_user_id_missing_for_group_register" };
+    }
+
+    try {
+      await appendLineLinkRecord(
+        {
+          createdAt: toJstIsoString(),
+          clerkUserId,
+          recipientType: "group",
+          lineId: groupId,
+          eventType: "group_register_command",
+        },
+        JSON.stringify(event.source || {})
+      );
+
+      await replyLineMessage(
+        replyToken,
+        "このグループを送信先として登録しました。必要に応じて Bot の1:1トークで `設定 グループ` も実行してください。"
+      );
+      return { status: "skipped", reason: "group_registered" };
+    } catch (error) {
+      await replyLineMessage(
+        replyToken,
+        `グループ登録に失敗しました。${error instanceof Error ? error.message : "unknown"}`
+      );
+      return { status: "skipped", reason: "group_register_failed" };
+    }
+  }
+
+  if (isGroupCheckCommand(text)) {
+    if (event.source?.groupId) {
+      await replyLineMessage(
+        replyToken,
+        "このコマンドは Bot との1:1トークで実行してください。"
+      );
+      return { status: "skipped", reason: "group_check_inside_group" };
+    }
+
+    const clerkUserId = resolveClerkUserId(request);
+    if (!clerkUserId) {
+      await replyLineMessage(
+        replyToken,
+        "連携ユーザーIDが未設定です。Webhook URL の clerkUserId を確認してください。"
+      );
+      return { status: "skipped", reason: "clerk_user_id_missing_for_group_check" };
+    }
+
+    try {
+      const groupLink = await getLatestLineLinkRecordByType(clerkUserId, "group");
+      if (!groupLink) {
+        await replyLineMessage(
+          replyToken,
+          "登録済みの送信先グループが見つかりません。受信グループで `グループ登録` を実行してください。"
+        );
+        return { status: "skipped", reason: "group_link_not_found" };
+      }
+
+      const maskedGroupId =
+        groupLink.lineId.length > 8
+          ? `${groupLink.lineId.slice(0, 4)}...${groupLink.lineId.slice(-4)}`
+          : groupLink.lineId;
+      await replyLineMessage(
+        replyToken,
+        `現在の登録グループ: ${maskedGroupId}\n登録日時: ${groupLink.createdAt}`
+      );
+      return { status: "skipped", reason: "group_check_completed" };
+    } catch (error) {
+      await replyLineMessage(
+        replyToken,
+        `グループ確認に失敗しました。${error instanceof Error ? error.message : "unknown"}`
+      );
+      return { status: "skipped", reason: "group_check_failed" };
     }
   }
 
