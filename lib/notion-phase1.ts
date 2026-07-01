@@ -389,6 +389,40 @@ function getPageTitle(page: NotionPage) {
   return "";
 }
 
+function extractPagePropertyLines(page: NotionPage) {
+  if (!("properties" in page)) return [];
+  const lines: string[] = [];
+  for (const [name, prop] of Object.entries(page.properties || {})) {
+    if (!prop || typeof prop !== "object") continue;
+    if (prop.type === "title") continue;
+
+    let value = "";
+    if (prop.type === "status") value = prop.status?.name || "";
+    else if (prop.type === "select") value = prop.select?.name || "";
+    else if (prop.type === "multi_select")
+      value = (prop.multi_select || []).map((item: { name?: string }) => item.name || "").join(", ");
+    else if (prop.type === "date") value = prop.date?.start || "";
+    else if (prop.type === "rich_text") value = richTextToPlainText(prop.rich_text);
+    else if (prop.type === "number")
+      value = typeof prop.number === "number" ? String(prop.number) : "";
+    else if (prop.type === "checkbox") value = prop.checkbox ? "true" : "false";
+    else if (prop.type === "url") value = prop.url || "";
+    else if (prop.type === "email") value = prop.email || "";
+    else if (prop.type === "phone_number") value = prop.phone_number || "";
+    else if (prop.type === "people")
+      value = (prop.people || [])
+        .map((item: { name?: string; id?: string }) => item.name || item.id || "")
+        .filter(Boolean)
+        .join(", ");
+
+    const normalized = String(value || "").trim();
+    if (normalized) {
+      lines.push(`- ${name}: ${normalized}`);
+    }
+  }
+  return lines;
+}
+
 function maybeMatchUser(page: NotionPage, hint: string) {
   if (!hint || !("properties" in page)) return true;
   const lowered = hint.toLowerCase();
@@ -474,10 +508,21 @@ async function fetchDailyMemoFromDatabase(notion: Client, params: DailyMemoParam
   for (const page of effectivePages.slice(0, 5)) {
     const title = getPageTitle(page) || "無題メモ";
     lines.push(`## ${title}`);
+    const propertyLines = extractPagePropertyLines(page);
+    if (propertyLines.length > 0) {
+      lines.push(...propertyLines);
+    }
     const blocks = await listAllChildren(notion, page.id);
+    let hasBlockText = false;
     for (const block of blocks) {
       const blockLines = await collectBlockTexts(notion, block);
-      lines.push(...blockLines);
+      if (blockLines.length > 0) {
+        hasBlockText = true;
+        lines.push(...blockLines);
+      }
+    }
+    if (!hasBlockText && propertyLines.length === 0) {
+      lines.push("- （本文・プロパティともに取得できる内容がありません）");
     }
     lines.push("");
   }
