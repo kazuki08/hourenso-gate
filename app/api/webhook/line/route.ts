@@ -408,7 +408,11 @@ function isNotionDailyDbCheckCommand(text: string) {
 
 function isNotionDailyDbClearCommand(text: string) {
   const normalized = text.trim();
-  return normalized === "日報DB解除" || normalized === "Notion日報DB解除";
+  return (
+    normalized === "日報DB解除" ||
+    normalized === "日報DB接続解除" ||
+    normalized === "Notion日報DB解除"
+  );
 }
 
 function isNotionDailyDbSetCommand(text: string) {
@@ -779,7 +783,7 @@ async function handleMessageEvent(
           notionDatabaseIdOverride: resolvedDatabaseId,
           disableFallbackPage: true,
         }),
-        WEBHOOK_EXTERNAL_TIMEOUT_MS,
+        NOTION_FETCH_TIMEOUT_MS,
         "notion_daily_db_validate"
       );
       await appendLineNotionDailyDbRecord({
