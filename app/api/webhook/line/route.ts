@@ -33,6 +33,16 @@ import {
   getLatestMemberLink,
   getMissingLineMemberLinkEnvVars,
 } from "@/lib/line-member-link-store";
+import {
+  appendLineAdminRecord,
+  getActiveLineAdminIds,
+  getMissingLineAdminEnvVars,
+} from "@/lib/line-admin-store";
+import {
+  appendLineOrganizationRecord,
+  getLatestActiveOrganizationByLineUserId,
+  getMissingLineOrganizationEnvVars,
+} from "@/lib/line-organization-store";
 
 type LineWebhookEvent = {
   type?: string;
@@ -184,7 +194,12 @@ function isGroupCheckCommand(text: string) {
 
 function isCreateMemberInviteCommand(text: string) {
   const normalized = text.trim();
-  return normalized === "部下招待" || normalized === "招待作成";
+  return (
+    normalized === "部下招待" ||
+    normalized === "招待作成" ||
+    normalized === "部下招待URL" ||
+    normalized === "招待URL発行"
+  );
 }
 
 function parseMemberLinkCommand(text: string) {
@@ -196,6 +211,33 @@ function parseMemberLinkCommand(text: string) {
 
 function createInviteCode() {
   return crypto.randomBytes(5).toString("hex").toUpperCase();
+}
+
+function getEnvInviteCreatorAllowlist() {
+  const raw = normalizeEnvValue(process.env.LINE_INVITE_CREATOR_ALLOWLIST);
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+async function isInviteCommandAllowed(lineUserId: string) {
+  if (!lineUserId) return false;
+  const envAllowlist = getEnvInviteCreatorAllowlist();
+  if (envAllowlist.includes(lineUserId)) {
+    return true;
+  }
+  const missing = getMissingLineAdminEnvVars();
+  if (missing.length > 0) {
+    return envAllowlist.length === 0;
+  }
+  try {
+    const activeAdminIds = await getActiveLineAdminIds();
+    return activeAdminIds.includes(lineUserId);
+  } catch {
+    return envAllowlist.length === 0;
+  }
 }
 
 function parseInviteRevokeCommand(text: string) {
@@ -213,6 +255,35 @@ function isMemberUnlinkCommand(text: string) {
 function isCurrentLinkCheckCommand(text: string) {
   const normalized = text.trim();
   return normalized === "現在の連携先確認" || normalized === "連携先確認";
+}
+
+function parseAdminAddCommand(text: string) {
+  const normalized = text.trim();
+  const match = normalized.match(/^(?:管理者追加|管理者登録)\s+(U[A-Za-z0-9]{8,})$/);
+  return match ? match[1] : null;
+}
+
+function parseAdminRemoveCommand(text: string) {
+  const normalized = text.trim();
+  const match = normalized.match(/^(?:管理者削除|管理者解除)\s+(U[A-Za-z0-9]{8,})$/);
+  return match ? match[1] : null;
+}
+
+function isAdminListCommand(text: string) {
+  const normalized = text.trim();
+  return normalized === "管理者確認" || normalized === "管理者一覧";
+}
+
+function parseOrganizationSetCommand(text: string) {
+  const normalized = text.trim();
+  const match = normalized.match(/^(?:組織設定|組織名設定)\s+(.{1,40})$/);
+  if (!match) return null;
+  return match[1].trim();
+}
+
+function isOrganizationCheckCommand(text: string) {
+  const normalized = text.trim();
+  return normalized === "組織確認" || normalized === "組織名確認";
 }
 
 function maskLineId(value: string) {
@@ -529,6 +600,194 @@ async function handleMessageEvent(
     }
   }
 
+  const adminAddTarget = parseAdminAddCommand(text);
+  if (adminAddTarget) {
+    if (!lineUserId) {
+      await replyLineMessage(replyToken, "このコマンドは Bot の1:1トークで実行してください。");
+      return { status: "skipped", reason: "admin_add_user_id_missing" };
+    }
+    const missing = getMissingLineAdminEnvVars();
+    if (missing.length > 0) {
+      await replyLineMessage(
+        replyToken,
+        `管理者設定に必要な環境変数が不足しています: ${missing.join(", ")}`
+      );
+      return { status: "skipped", reason: "missing_env_for_admin_add" };
+    }
+    try {
+      const envAllowlist = getEnvInviteCreatorAllowlist();
+      const activeAdmins = await getActiveLineAdminIds();
+      const canManage =
+        envAllowlist.includes(lineUserId) ||
+        activeAdmins.includes(lineUserId) ||
+        (envAllowlist.length === 0 && activeAdmins.length === 0);
+      if (!canManage) {
+        await replyLineMessage(
+          replyToken,
+          "管理者追加は管理者のみ実行できます。"
+        );
+        return { status: "skipped", reason: "admin_add_not_allowed" };
+      }
+      await appendLineAdminRecord({
+        createdAt: toJstIsoString(),
+        lineUserId: adminAddTarget,
+        status: "active",
+        updatedBy: lineUserId,
+      });
+      await replyLineMessage(replyToken, `管理者を追加しました: ${maskLineId(adminAddTarget)}`);
+      return { status: "skipped", reason: "admin_added" };
+    } catch (error) {
+      await replyLineMessage(
+        replyToken,
+        `管理者追加に失敗しました。${error instanceof Error ? error.message : "unknown"}`
+      );
+      return { status: "skipped", reason: "admin_add_failed" };
+    }
+  }
+
+  const adminRemoveTarget = parseAdminRemoveCommand(text);
+  if (adminRemoveTarget) {
+    if (!lineUserId) {
+      await replyLineMessage(replyToken, "このコマンドは Bot の1:1トークで実行してください。");
+      return { status: "skipped", reason: "admin_remove_user_id_missing" };
+    }
+    const missing = getMissingLineAdminEnvVars();
+    if (missing.length > 0) {
+      await replyLineMessage(
+        replyToken,
+        `管理者設定に必要な環境変数が不足しています: ${missing.join(", ")}`
+      );
+      return { status: "skipped", reason: "missing_env_for_admin_remove" };
+    }
+    try {
+      const canManage = await isInviteCommandAllowed(lineUserId);
+      if (!canManage) {
+        await replyLineMessage(replyToken, "管理者削除は管理者のみ実行できます。");
+        return { status: "skipped", reason: "admin_remove_not_allowed" };
+      }
+      await appendLineAdminRecord({
+        createdAt: toJstIsoString(),
+        lineUserId: adminRemoveTarget,
+        status: "inactive",
+        updatedBy: lineUserId,
+      });
+      await replyLineMessage(replyToken, `管理者を削除しました: ${maskLineId(adminRemoveTarget)}`);
+      return { status: "skipped", reason: "admin_removed" };
+    } catch (error) {
+      await replyLineMessage(
+        replyToken,
+        `管理者削除に失敗しました。${error instanceof Error ? error.message : "unknown"}`
+      );
+      return { status: "skipped", reason: "admin_remove_failed" };
+    }
+  }
+
+  if (isAdminListCommand(text)) {
+    if (!lineUserId) {
+      await replyLineMessage(replyToken, "このコマンドは Bot の1:1トークで実行してください。");
+      return { status: "skipped", reason: "admin_list_user_id_missing" };
+    }
+    const missing = getMissingLineAdminEnvVars();
+    if (missing.length > 0) {
+      await replyLineMessage(
+        replyToken,
+        `管理者確認に必要な環境変数が不足しています: ${missing.join(", ")}`
+      );
+      return { status: "skipped", reason: "missing_env_for_admin_list" };
+    }
+    try {
+      const canManage = await isInviteCommandAllowed(lineUserId);
+      if (!canManage) {
+        await replyLineMessage(replyToken, "管理者確認は管理者のみ実行できます。");
+        return { status: "skipped", reason: "admin_list_not_allowed" };
+      }
+      const admins = await getActiveLineAdminIds();
+      if (admins.length === 0) {
+        await replyLineMessage(replyToken, "有効な管理者は未登録です。");
+        return { status: "skipped", reason: "admin_list_empty" };
+      }
+      await replyLineMessage(
+        replyToken,
+        `現在の管理者:\n${admins.map((id) => `- ${maskLineId(id)}`).join("\n")}`
+      );
+      return { status: "skipped", reason: "admin_list_completed" };
+    } catch (error) {
+      await replyLineMessage(
+        replyToken,
+        `管理者確認に失敗しました。${error instanceof Error ? error.message : "unknown"}`
+      );
+      return { status: "skipped", reason: "admin_list_failed" };
+    }
+  }
+
+  const organizationName = parseOrganizationSetCommand(text);
+  if (organizationName) {
+    if (!lineUserId) {
+      await replyLineMessage(replyToken, "このコマンドは Bot の1:1トークで実行してください。");
+      return { status: "skipped", reason: "org_set_user_id_missing" };
+    }
+    const missing = getMissingLineOrganizationEnvVars();
+    if (missing.length > 0) {
+      await replyLineMessage(
+        replyToken,
+        `組織設定に必要な環境変数が不足しています: ${missing.join(", ")}`
+      );
+      return { status: "skipped", reason: "missing_env_for_org_set" };
+    }
+    if (!(await isInviteCommandAllowed(lineUserId))) {
+      await replyLineMessage(replyToken, "組織設定は管理者のみ実行できます。");
+      return { status: "skipped", reason: "org_set_not_allowed" };
+    }
+    try {
+      await appendLineOrganizationRecord({
+        createdAt: toJstIsoString(),
+        lineUserId,
+        organizationName,
+        status: "active",
+        updatedBy: lineUserId,
+      });
+      await replyLineMessage(replyToken, `組織名を設定しました: ${organizationName}`);
+      return { status: "skipped", reason: "org_set_completed" };
+    } catch (error) {
+      await replyLineMessage(
+        replyToken,
+        `組織設定に失敗しました。${error instanceof Error ? error.message : "unknown"}`
+      );
+      return { status: "skipped", reason: "org_set_failed" };
+    }
+  }
+
+  if (isOrganizationCheckCommand(text)) {
+    if (!lineUserId) {
+      await replyLineMessage(replyToken, "このコマンドは Bot の1:1トークで実行してください。");
+      return { status: "skipped", reason: "org_check_user_id_missing" };
+    }
+    const missing = getMissingLineOrganizationEnvVars();
+    if (missing.length > 0) {
+      await replyLineMessage(
+        replyToken,
+        `組織確認に必要な環境変数が不足しています: ${missing.join(", ")}`
+      );
+      return { status: "skipped", reason: "missing_env_for_org_check" };
+    }
+    try {
+      const org = await getLatestActiveOrganizationByLineUserId(lineUserId);
+      await replyLineMessage(
+        replyToken,
+        org
+          ? `現在の組織名: ${org.organizationName}`
+          : "組織名は未設定です。`組織設定 <組織名>` で登録してください。"
+      );
+      return { status: "skipped", reason: "org_check_completed" };
+    } catch (error) {
+      await replyLineMessage(
+        replyToken,
+        `組織確認に失敗しました。${error instanceof Error ? error.message : "unknown"}`
+      );
+      return { status: "skipped", reason: "org_check_failed" };
+    }
+  }
+
   if (isCreateMemberInviteCommand(text)) {
     const missing = [
       ...getMissingLineInviteEnvVars(),
@@ -554,11 +813,33 @@ async function handleMessageEvent(
       );
       return { status: "skipped", reason: "invite_creator_user_id_missing" };
     }
+    if (!lineUserId || !(await isInviteCommandAllowed(lineUserId))) {
+      await replyLineMessage(
+        replyToken,
+        "このコマンドは管理者のみ実行できます。運用者に権限追加を依頼してください。"
+      );
+      return { status: "skipped", reason: "invite_creator_not_allowed" };
+    }
 
     const createdAt = toJstIsoString();
     const expiresAt = toJstIsoString(Date.now() + 30 * 60 * 1000);
     const inviteCode = createInviteCode();
     try {
+      let organizationNameForInvite = "未設定";
+      try {
+        const org = await getLatestActiveOrganizationByLineUserId(lineUserId);
+        if (org?.organizationName) {
+          organizationNameForInvite = org.organizationName;
+        }
+      } catch (error) {
+        console.error(
+          `${WEBHOOK_LOG_PREFIX} org lookup failed but invite continues`,
+          JSON.stringify({
+            lineUserId,
+            message: error instanceof Error ? error.message : "unknown",
+          })
+        );
+      }
       await appendLineInviteRecord({
         createdAt,
         inviteCode,
@@ -573,11 +854,17 @@ async function handleMessageEvent(
       await replyLineMessage(
         replyToken,
         [
+          `組織: ${organizationNameForInvite}`,
           `部下連携コード: ${inviteCode}`,
           "部下は Bot の1:1トークで次を送信してください。",
           `連携 ${inviteCode}`,
+          normalizeEnvValue(process.env.NEXT_PUBLIC_LINE_ADD_FRIEND_URL)
+            ? `Bot追加URL: ${normalizeEnvValue(process.env.NEXT_PUBLIC_LINE_ADD_FRIEND_URL)}`
+            : "",
           `有効期限: ${expiresAt}`,
-        ].join("\n")
+        ]
+          .filter(Boolean)
+          .join("\n")
       );
       return { status: "skipped", reason: "invite_created" };
     } catch (error) {
@@ -672,6 +959,13 @@ async function handleMessageEvent(
     if (!lineUserId) {
       await replyLineMessage(replyToken, "このコマンドは Bot の1:1トークで実行してください。");
       return { status: "skipped", reason: "invite_revoke_user_id_missing" };
+    }
+    if (!(await isInviteCommandAllowed(lineUserId))) {
+      await replyLineMessage(
+        replyToken,
+        "このコマンドは管理者のみ実行できます。運用者に権限追加を依頼してください。"
+      );
+      return { status: "skipped", reason: "invite_revoke_not_allowed" };
     }
     const missing = getMissingLineInviteEnvVars();
     if (missing.length > 0) {
