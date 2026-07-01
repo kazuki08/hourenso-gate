@@ -329,6 +329,11 @@ function isOrganizationCheckCommand(text: string) {
   return normalized === "組織確認" || normalized === "組織名確認";
 }
 
+function isHelpCommand(text: string) {
+  const normalized = text.trim();
+  return normalized === "ヘルプ" || normalized === "help" || normalized === "使い方";
+}
+
 function maskLineId(value: string) {
   if (value.length <= 8) return value;
   return `${value.slice(0, 4)}...${value.slice(-4)}`;
@@ -527,6 +532,33 @@ async function handleMessageEvent(
       );
       return { status: "skipped", reason: "setting_update_failed" };
     }
+  }
+
+  if (isHelpCommand(text)) {
+    await replyLineMessage(
+      replyToken,
+      [
+        "【部下向け】",
+        "・日報作成",
+        "・連携 <コード>",
+        "・現在の連携先確認",
+        "・連携解除",
+        "",
+        "【上司/管理者向け】",
+        "・部下招待 / 招待URL発行",
+        "・招待無効化 <コード>",
+        "・組織設定 <組織名>",
+        "・組織確認",
+        "・管理者追加 <LINE_USER_ID>",
+        "・管理者削除 <LINE_USER_ID>",
+        "・管理者確認",
+        "",
+        "【送信先運用】",
+        "・設定 個人 / 設定 グループ / 設定確認",
+        "・グループ登録 / グループ確認",
+      ].join("\n")
+    );
+    return { status: "skipped", reason: "help_shown" };
   }
 
   if (isForwardSettingCheckCommand(text)) {
