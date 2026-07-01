@@ -371,9 +371,23 @@ function parseNotionDailyDbSetCommand(text: string) {
   const match = normalized.match(/^(?:日報DB設定|Notion日報DB設定)\s+(.+)$/i);
   if (!match) return null;
   const raw = match[1].trim();
-  const fromUrl = raw.match(/[0-9a-fA-F]{32}/g);
-  if (fromUrl?.length) {
-    return fromUrl[fromUrl.length - 1];
+  try {
+    const url = new URL(raw);
+    const pathSegments = url.pathname.split("/").filter(Boolean);
+    for (const segment of pathSegments) {
+      const directId = segment.match(/^[0-9a-fA-F]{32}$/);
+      if (directId) return directId[0];
+      const prefixedId = segment.match(/^p([0-9a-fA-F]{32})$/i);
+      if (prefixedId) return prefixedId[1];
+      const embeddedId = segment.match(/([0-9a-fA-F]{32})/);
+      if (embeddedId) return embeddedId[1];
+    }
+  } catch {
+    // not a URL, continue as raw ID parsing
+  }
+  const fromRaw = raw.match(/[0-9a-fA-F]{32}/);
+  if (fromRaw) {
+    return fromRaw[0];
   }
   const compact = raw.replace(/-/g, "");
   if (/^[0-9a-fA-F]{32}$/.test(compact)) {
@@ -753,6 +767,7 @@ async function handleMessageEvent(
           lineUserId,
           notionApiKeyOverride: connection.accessToken,
           notionDatabaseIdOverride: dailyDbId,
+          disableFallbackPage: true,
         }),
         WEBHOOK_EXTERNAL_TIMEOUT_MS,
         "notion_daily_db_validate"
@@ -1581,6 +1596,7 @@ async function handleMessageEvent(
           lineUserId: actorId,
           notionApiKeyOverride,
           notionDatabaseIdOverride,
+          disableFallbackPage: Boolean(notionDatabaseIdOverride),
         }),
         WEBHOOK_EXTERNAL_TIMEOUT_MS,
         "notion_fetch"

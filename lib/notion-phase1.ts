@@ -28,6 +28,7 @@ export type DailyMemoParams = {
   notionUserHint?: string;
   notionApiKeyOverride?: string;
   notionDatabaseIdOverride?: string;
+  disableFallbackPage?: boolean;
 };
 
 function richTextToPlainText(
@@ -484,7 +485,7 @@ export async function getNotionDailyMemo(params: DailyMemoParams = {}) {
           hasFallbackPage: Boolean(process.env.NOTION_TEST_PAGE_ID),
         })
       );
-      if (process.env.NOTION_TEST_PAGE_ID) {
+      if (!params.disableFallbackPage && process.env.NOTION_TEST_PAGE_ID) {
         return fetchFallbackPageMemo(notion);
       }
       return {
