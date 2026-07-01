@@ -48,7 +48,14 @@ function resolveRedirectUri() {
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
     throw new Error("invalid_env_var:NOTION_OAUTH_REDIRECT_URI_PROTOCOL");
   }
-  return parsed.toString();
+  if (parsed.search || parsed.hash) {
+    throw new Error("invalid_env_var:NOTION_OAUTH_REDIRECT_URI_QUERY_OR_HASH");
+  }
+  const normalizedPath = parsed.pathname.replace(/\/+$/, "");
+  if (normalizedPath !== "/api/notion/oauth/callback") {
+    throw new Error("invalid_env_var:NOTION_OAUTH_REDIRECT_URI_PATH");
+  }
+  return new URL("/api/notion/oauth/callback", parsed.origin).toString();
 }
 
 export function getMissingNotionOAuthEnvVars() {
