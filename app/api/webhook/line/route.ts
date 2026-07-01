@@ -360,6 +360,16 @@ function isHelpCommand(text: string) {
   return normalized === "ヘルプ" || normalized === "help" || normalized === "使い方";
 }
 
+function isShowMyLineUserIdCommand(text: string) {
+  const normalized = text.trim();
+  return (
+    normalized === "自分のID" ||
+    normalized === "ID確認" ||
+    normalized === "LINE ID確認" ||
+    normalized === "LINE_USER_ID確認"
+  );
+}
+
 function buildLiffNotionConnectUrl(authUrl: string) {
   const base = normalizeEnvValue(process.env.NEXT_PUBLIC_LIFF_NOTION_CONNECT_URL);
   if (!base) return "";
@@ -582,6 +592,7 @@ async function handleMessageEvent(
         "・連携 <コード>",
         "・現在の連携先確認",
         "・連携解除",
+        "・自分のID",
         "",
         "【上司/管理者向け】",
         "・部下招待 / 招待URL発行",
@@ -598,6 +609,27 @@ async function handleMessageEvent(
       ].join("\n")
     );
     return { status: "skipped", reason: "help_shown" };
+  }
+
+  if (isShowMyLineUserIdCommand(text)) {
+    if (!lineUserId) {
+      await replyLineMessage(
+        replyToken,
+        "このコマンドは Bot の1:1トークで実行してください。"
+      );
+      return { status: "skipped", reason: "show_id_user_missing" };
+    }
+    await replyLineMessage(
+      replyToken,
+      [
+        "あなたの LINE_USER_ID は以下です。",
+        lineUserId,
+        "",
+        "管理者追加に使う場合:",
+        `管理者追加 ${lineUserId}`,
+      ].join("\n")
+    );
+    return { status: "skipped", reason: "show_id_done" };
   }
 
   if (isNotionConnectStartCommand(text)) {
