@@ -26,6 +26,31 @@ function getStateSecret() {
   );
 }
 
+function resolveRedirectUri() {
+  const raw = normalizeEnvValue(process.env.NOTION_OAUTH_REDIRECT_URI);
+  if (!raw) {
+    throw new Error("missing_env_var:NOTION_OAUTH_REDIRECT_URI");
+  }
+
+  // Recover from malformed values like "/Users/.../https://example.com/callback".
+  const httpIndex = raw.indexOf("http://");
+  const httpsIndex = raw.indexOf("https://");
+  const recoveredIndex =
+    httpsIndex >= 0 ? httpsIndex : httpIndex >= 0 ? httpIndex : -1;
+  const candidate = recoveredIndex > 0 ? raw.slice(recoveredIndex) : raw;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    throw new Error("invalid_env_var:NOTION_OAUTH_REDIRECT_URI");
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error("invalid_env_var:NOTION_OAUTH_REDIRECT_URI_PROTOCOL");
+  }
+  return parsed.toString();
+}
+
 export function getMissingNotionOAuthEnvVars() {
   const missing: string[] = [];
   if (!normalizeEnvValue(process.env.NOTION_OAUTH_CLIENT_ID)) {
@@ -84,10 +109,10 @@ export function parseNotionOAuthState(state: string) {
 
 export function buildNotionOAuthAuthorizeUrl(state: string) {
   const clientId = normalizeEnvValue(process.env.NOTION_OAUTH_CLIENT_ID);
-  const redirectUri = normalizeEnvValue(process.env.NOTION_OAUTH_REDIRECT_URI);
-  if (!clientId || !redirectUri) {
+  if (!clientId) {
     throw new Error("missing_env_var:NOTION_OAUTH_CLIENT_ID_OR_REDIRECT_URI");
   }
+  const redirectUri = resolveRedirectUri();
   const url = new URL("https://api.notion.com/v1/oauth/authorize");
   url.searchParams.set("owner", "user");
   url.searchParams.set("client_id", clientId);
@@ -100,7 +125,7 @@ export function buildNotionOAuthAuthorizeUrl(state: string) {
 export async function exchangeNotionOAuthCode(code: string) {
   const clientId = normalizeEnvValue(process.env.NOTION_OAUTH_CLIENT_ID);
   const clientSecret = normalizeEnvValue(process.env.NOTION_OAUTH_CLIENT_SECRET);
-  const redirectUri = normalizeEnvValue(process.env.NOTION_OAUTH_REDIRECT_URI);
+  const redirectUri = resolveRedirectUri();
   if (!clientId || !clientSecret || !redirectUri) {
     throw new Error("missing_env_var:notion_oauth_credentials");
   }
