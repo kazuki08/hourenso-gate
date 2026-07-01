@@ -99,6 +99,7 @@ type MessageEventResult =
 
 const WEBHOOK_LOG_PREFIX = "[LINE Webhook]";
 const WEBHOOK_EXTERNAL_TIMEOUT_MS = 3500;
+const NOTION_FETCH_TIMEOUT_MS = 12000;
 const BOT_INFO_CACHE_TTL_MS = 1000 * 60 * 60 * 6;
 let cachedLineAddFriendUrl = "";
 let cachedLineAddFriendUrlAt = 0;
@@ -1569,7 +1570,7 @@ async function handleMessageEvent(
           try {
             const autoDiscoveredDbId = await withTimeout(
               discoverLatestAccessibleNotionDatabaseId(connection.accessToken),
-              WEBHOOK_EXTERNAL_TIMEOUT_MS,
+              NOTION_FETCH_TIMEOUT_MS,
               "notion_auto_discover_db"
             );
             if (autoDiscoveredDbId && getMissingLineNotionDailyDbEnvVars().length === 0) {
@@ -1598,7 +1599,7 @@ async function handleMessageEvent(
           notionDatabaseIdOverride,
           disableFallbackPage: Boolean(notionDatabaseIdOverride),
         }),
-        WEBHOOK_EXTERNAL_TIMEOUT_MS,
+        NOTION_FETCH_TIMEOUT_MS,
         "notion_fetch"
       );
       notionText = notionData.content || "";
