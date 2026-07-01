@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 const isPublicRoute = createRouteMatcher([
   "/",
+  "/liff(.*)",
   "/api/webhook(.*)",
   "/api/webhook/line(.*)",
   "/api/notion/oauth/callback(.*)",

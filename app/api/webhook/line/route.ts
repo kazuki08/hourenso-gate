@@ -360,6 +360,18 @@ function isHelpCommand(text: string) {
   return normalized === "ヘルプ" || normalized === "help" || normalized === "使い方";
 }
 
+function buildLiffNotionConnectUrl(authUrl: string) {
+  const base = normalizeEnvValue(process.env.NEXT_PUBLIC_LIFF_NOTION_CONNECT_URL);
+  if (!base) return "";
+  try {
+    const url = new URL(base);
+    url.searchParams.set("auth", authUrl);
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
 function maskLineId(value: string) {
   if (value.length <= 8) return value;
   return `${value.slice(0, 4)}...${value.slice(-4)}`;
@@ -607,13 +619,20 @@ async function handleMessageEvent(
     try {
       const state = createNotionOAuthState(lineUserId);
       const authUrl = buildNotionOAuthAuthorizeUrl(state);
+      const liffUrl = buildLiffNotionConnectUrl(authUrl);
       await replyLineMessage(
         replyToken,
-        [
-          "以下URLを開いてNotion連携を許可してください。",
-          authUrl,
-          "許可後、このLINEに完了通知が届きます。",
-        ].join("\n")
+        liffUrl
+          ? [
+              "以下をタップして連携を開始してください（外部ブラウザ推奨）。",
+              liffUrl,
+              "許可後、このLINEに完了通知が届きます。",
+            ].join("\n")
+          : [
+              "以下URLを開いてNotion連携を許可してください。",
+              authUrl,
+              "許可後、このLINEに完了通知が届きます。",
+            ].join("\n")
       );
       return { status: "skipped", reason: "notion_connect_start_shown" };
     } catch (error) {
