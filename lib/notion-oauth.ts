@@ -26,6 +26,15 @@ function getStateSecret() {
   );
 }
 
+function getStateTtlMs() {
+  const raw = normalizeEnvValue(process.env.NOTION_OAUTH_STATE_TTL_MINUTES);
+  const parsed = Number.parseInt(raw || "", 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 1000 * 60 * 60; // default 60 minutes
+  }
+  return parsed * 60 * 1000;
+}
+
 function resolveRedirectUri() {
   const raw = normalizeEnvValue(process.env.NOTION_OAUTH_REDIRECT_URI);
   if (!raw) {
@@ -108,7 +117,7 @@ export function parseNotionOAuthState(state: string) {
     throw new Error("invalid_state_payload");
   }
   const ageMs = Date.now() - payload.issuedAt;
-  if (ageMs > 1000 * 60 * 15) {
+  if (ageMs > getStateTtlMs()) {
     throw new Error("state_expired");
   }
   return payload;

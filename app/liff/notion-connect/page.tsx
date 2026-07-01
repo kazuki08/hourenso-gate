@@ -55,6 +55,7 @@ export default async function LiffNotionConnectPage({
   const liffState = firstParam(params["liff.state"]);
   const raw = directAuth || extractAuthFromLiffState(liffState);
   let authUrl = "";
+  let liffId = "";
   try {
     const parsed = new URL(raw);
     if (parsed.protocol === "https:") {
@@ -64,5 +65,15 @@ export default async function LiffNotionConnectPage({
     authUrl = "";
   }
 
-  return <NotionConnectClient authUrl={authUrl} />;
+  try {
+    const liffRaw = process.env.NEXT_PUBLIC_LIFF_NOTION_CONNECT_URL || "";
+    const liffUrl = new URL(liffRaw);
+    if (liffUrl.hostname === "liff.line.me") {
+      liffId = liffUrl.pathname.replace(/^\/+/, "").split("/")[0] || "";
+    }
+  } catch {
+    liffId = "";
+  }
+
+  return <NotionConnectClient authUrl={authUrl} liffId={liffId} />;
 }

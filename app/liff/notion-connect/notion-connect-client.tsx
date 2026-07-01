@@ -2,29 +2,102 @@
 
 import { useState } from "react";
 
+type LiffSdk = {
+  init: (args: { liffId: string }) => Promise<void>;
+  openWindow: (args: { url: string; external?: boolean }) => void;
+};
+
+declare global {
+  interface Window {
+    liff?: LiffSdk;
+  }
+}
+
 function toIntentUrl(url: string) {
   if (!url.startsWith("https://")) return "";
   const withoutScheme = url.slice("https://".length);
   return `intent://${withoutScheme}#Intent;scheme=https;action=android.intent.action.VIEW;end`;
 }
 
-export default function NotionConnectClient({ authUrl }: { authUrl: string }) {
-  const [copied, setCopied] = useState(false);
+function toSafariSchemeUrl(url: string) {
+  if (!url.startsWith("https://")) return "";
+  return `x-safari-${url}`;
+}
 
-  const openExternal = () => {
+function loadLiffSdk() {
+  return new Promise<void>((resolve) => {
+    if (window.liff) {
+      resolve();
+      return;
+    }
+    const existing = document.querySelector<HTMLScriptElement>('script[data-liff-sdk="true"]');
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      setTimeout(() => resolve(), 1500);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://static.line-scdn.net/liff/edge/2/sdk.js";
+    script.async = true;
+    script.dataset.liffSdk = "true";
+    script.onload = () => resolve();
+    script.onerror = () => resolve();
+    document.head.appendChild(script);
+  });
+}
+
+export default function NotionConnectClient({
+  authUrl,
+  liffId,
+}: {
+  authUrl: string;
+  liffId: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [opening, setOpening] = useState(false);
+
+  const openExternal = async () => {
     if (!authUrl) return;
+    if (opening) return;
+    setOpening(true);
+
+    try {
+      if (liffId) {
+        await loadLiffSdk();
+        if (window.liff) {
+          await window.liff.init({ liffId });
+          window.liff.openWindow({ url: authUrl, external: true });
+          return;
+        }
+      }
+    } catch {
+      // Fallbacks below.
+    } finally {
+      setOpening(false);
+    }
+
     const ua = navigator.userAgent.toLowerCase();
+    if (ua.includes("iphone") || ua.includes("ipad")) {
+      const safariUrl = toSafariSchemeUrl(authUrl);
+      if (safariUrl) {
+        window.location.href = safariUrl;
+        setTimeout(() => {
+          window.location.href = authUrl;
+        }, 700);
+        return;
+      }
+    }
     if (ua.includes("android")) {
       const intentUrl = toIntentUrl(authUrl);
       if (intentUrl) {
         window.location.href = intentUrl;
         setTimeout(() => {
-          window.open(authUrl, "_blank", "noopener,noreferrer");
+          window.location.href = authUrl;
         }, 700);
         return;
       }
     }
-    window.open(authUrl, "_blank", "noopener,noreferrer");
+    window.location.href = authUrl;
   };
 
   const copyUrl = async () => {
@@ -53,7 +126,7 @@ export default function NotionConnectClient({ authUrl }: { authUrl: string }) {
               onClick={openExternal}
               className="w-full rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700"
             >
-              外部ブラウザで連携を続ける
+              {opening ? "外部ブラウザを起動中..." : "外部ブラウザで連携を続ける"}
             </button>
             <button
               type="button"
