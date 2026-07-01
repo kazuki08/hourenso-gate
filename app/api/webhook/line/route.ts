@@ -9,7 +9,7 @@ import {
 } from "@/lib/line-link-store";
 import { clearPendingDraft, getPendingDraft, setPendingDraft } from "@/lib/line-draft-store";
 import { notifyToLine } from "@/lib/notifiers";
-import { getNotionDailyMemo } from "@/lib/notion-phase1";
+import { discoverLatestAccessibleNotionDatabaseId, getNotionDailyMemo } from "@/lib/notion-phase1";
 import { DEFAULT_AI_FORMAT_PROMPT } from "@/lib/prompts";
 import {
   appendReportHistory,
@@ -49,6 +49,12 @@ import {
   getLatestLineNotionConnection,
   getMissingLineNotionConnectionEnvVars,
 } from "@/lib/line-notion-connection-store";
+import {
+  appendLineNotionDailyDbRecord,
+  getLatestActiveLineNotionDailyDb,
+  getLatestLineNotionDailyDb,
+  getMissingLineNotionDailyDbEnvVars,
+} from "@/lib/line-notion-daily-db-store";
 import {
   buildNotionOAuthAuthorizeUrl,
   createNotionOAuthState,
@@ -360,6 +366,37 @@ function isHelpCommand(text: string) {
   return normalized === "ヘルプ" || normalized === "help" || normalized === "使い方";
 }
 
+function parseNotionDailyDbSetCommand(text: string) {
+  const normalized = text.trim();
+  const match = normalized.match(/^(?:日報DB設定|Notion日報DB設定)\s+(.+)$/i);
+  if (!match) return null;
+  const raw = match[1].trim();
+  const fromUrl = raw.match(/[0-9a-fA-F]{32}/g);
+  if (fromUrl?.length) {
+    return fromUrl[fromUrl.length - 1];
+  }
+  const compact = raw.replace(/-/g, "");
+  if (/^[0-9a-fA-F]{32}$/.test(compact)) {
+    return compact;
+  }
+  return "";
+}
+
+function isNotionDailyDbCheckCommand(text: string) {
+  const normalized = text.trim();
+  return normalized === "日報DB確認" || normalized === "Notion日報DB確認";
+}
+
+function isNotionDailyDbClearCommand(text: string) {
+  const normalized = text.trim();
+  return normalized === "日報DB解除" || normalized === "Notion日報DB解除";
+}
+
+function isNotionDailyDbSetCommand(text: string) {
+  const normalized = text.trim();
+  return /^(?:日報DB設定|Notion日報DB設定)\s+/i.test(normalized);
+}
+
 function isShowMyLineUserIdCommand(text: string) {
   const normalized = text.trim();
   return (
@@ -589,6 +626,7 @@ async function handleMessageEvent(
         "【部下向け】",
         "・日報作成",
         "・Notion連携開始 / Notion連携確認 / Notion連携解除",
+        "・日報DB設定 <DB_ID> / 日報DB確認 / 日報DB解除",
         "・連携 <コード>",
         "・現在の連携先確認",
         "・連携解除",
@@ -673,6 +711,149 @@ async function handleMessageEvent(
         `Notion連携開始に失敗しました。${error instanceof Error ? error.message : "unknown"}`
       );
       return { status: "skipped", reason: "notion_connect_start_failed" };
+    }
+  }
+
+  const dailyDbIdParsed = parseNotionDailyDbSetCommand(text);
+  if (isNotionDailyDbSetCommand(text)) {
+    if (dailyDbIdParsed === "") {
+      await replyLineMessage(
+        replyToken,
+        "日報DB設定の形式が不正です。`日報DB設定 <DB_IDまたはDB_URL>` で送信してください。"
+      );
+      return { status: "skipped", reason: "daily_db_set_invalid_format" };
+    }
+    const dailyDbId = dailyDbIdParsed || "";
+    if (!lineUserId) {
+      await replyLineMessage(replyToken, "このコマンドは Bot の1:1トークで実行してください。");
+      return { status: "skipped", reason: "daily_db_set_user_missing" };
+    }
+    const missing = [
+      ...getMissingLineNotionDailyDbEnvVars(),
+      ...getMissingLineNotionConnectionEnvVars(),
+    ];
+    if (missing.length > 0) {
+      await replyLineMessage(
+        replyToken,
+        `日報DB設定に必要な環境変数が不足しています: ${Array.from(new Set(missing)).join(", ")}`
+      );
+      return { status: "skipped", reason: "daily_db_set_missing_env" };
+    }
+    try {
+      const connection = await getLatestActiveLineNotionConnection(lineUserId);
+      if (!connection?.accessToken) {
+        await replyLineMessage(
+          replyToken,
+          "先に `Notion連携開始` でNotion連携を完了してください。"
+        );
+        return { status: "skipped", reason: "daily_db_set_notion_not_connected" };
+      }
+      await withTimeout(
+        getNotionDailyMemo({
+          lineUserId,
+          notionApiKeyOverride: connection.accessToken,
+          notionDatabaseIdOverride: dailyDbId,
+        }),
+        WEBHOOK_EXTERNAL_TIMEOUT_MS,
+        "notion_daily_db_validate"
+      );
+      await appendLineNotionDailyDbRecord({
+        createdAt: toJstIsoString(),
+        lineUserId,
+        databaseId: dailyDbId,
+        status: "active",
+        updatedBy: lineUserId,
+        note: "manual_set",
+      });
+      await replyLineMessage(
+        replyToken,
+        [
+          "日報DBを設定しました。",
+          `databaseId: ${dailyDbId}`,
+          "次回からこのDBで `日報作成` します。",
+        ].join("\n")
+      );
+      return { status: "skipped", reason: "daily_db_set_done" };
+    } catch (error) {
+      await replyLineMessage(
+        replyToken,
+        `日報DB設定に失敗しました。DBアクセス権とIDを確認してください。(${
+          error instanceof Error ? error.message : "unknown"
+        })`
+      );
+      return { status: "skipped", reason: "daily_db_set_failed" };
+    }
+  }
+
+  if (isNotionDailyDbCheckCommand(text)) {
+    if (!lineUserId) {
+      await replyLineMessage(replyToken, "このコマンドは Bot の1:1トークで実行してください。");
+      return { status: "skipped", reason: "daily_db_check_user_missing" };
+    }
+    const missing = getMissingLineNotionDailyDbEnvVars();
+    if (missing.length > 0) {
+      await replyLineMessage(
+        replyToken,
+        `日報DB確認に必要な環境変数が不足しています: ${missing.join(", ")}`
+      );
+      return { status: "skipped", reason: "daily_db_check_missing_env" };
+    }
+    try {
+      const latest = await getLatestLineNotionDailyDb(lineUserId);
+      if (!latest || latest.status !== "active") {
+        await replyLineMessage(
+          replyToken,
+          "日報DBは未設定です。`日報DB設定 <DB_ID>` を実行してください。"
+        );
+        return { status: "skipped", reason: "daily_db_check_not_set" };
+      }
+      await replyLineMessage(
+        replyToken,
+        `日報DB設定済みです。\ndatabaseId: ${latest.databaseId}\n最終更新: ${latest.createdAt}`
+      );
+      return { status: "skipped", reason: "daily_db_check_done" };
+    } catch (error) {
+      await replyLineMessage(
+        replyToken,
+        `日報DB確認に失敗しました。${error instanceof Error ? error.message : "unknown"}`
+      );
+      return { status: "skipped", reason: "daily_db_check_failed" };
+    }
+  }
+
+  if (isNotionDailyDbClearCommand(text)) {
+    if (!lineUserId) {
+      await replyLineMessage(replyToken, "このコマンドは Bot の1:1トークで実行してください。");
+      return { status: "skipped", reason: "daily_db_clear_user_missing" };
+    }
+    const missing = getMissingLineNotionDailyDbEnvVars();
+    if (missing.length > 0) {
+      await replyLineMessage(
+        replyToken,
+        `日報DB解除に必要な環境変数が不足しています: ${missing.join(", ")}`
+      );
+      return { status: "skipped", reason: "daily_db_clear_missing_env" };
+    }
+    try {
+      await appendLineNotionDailyDbRecord({
+        createdAt: toJstIsoString(),
+        lineUserId,
+        databaseId: "",
+        status: "inactive",
+        updatedBy: lineUserId,
+        note: "manual_unset",
+      });
+      await replyLineMessage(
+        replyToken,
+        "日報DB設定を解除しました。次回は共通DB設定（環境変数）を使用します。"
+      );
+      return { status: "skipped", reason: "daily_db_clear_done" };
+    } catch (error) {
+      await replyLineMessage(
+        replyToken,
+        `日報DB解除に失敗しました。${error instanceof Error ? error.message : "unknown"}`
+      );
+      return { status: "skipped", reason: "daily_db_clear_failed" };
     }
   }
 
@@ -1358,6 +1539,7 @@ async function handleMessageEvent(
     let customPrompt = "";
     let noMemoNotice = "";
     let notionApiKeyOverride = "";
+    let notionDatabaseIdOverride = "";
 
     try {
       if (lineUserId) {
@@ -1365,10 +1547,41 @@ async function handleMessageEvent(
         if (connection?.accessToken) {
           notionApiKeyOverride = connection.accessToken;
         }
+        const dbMapping = await getLatestActiveLineNotionDailyDb(lineUserId);
+        if (dbMapping?.databaseId) {
+          notionDatabaseIdOverride = dbMapping.databaseId;
+        } else if (connection?.accessToken) {
+          try {
+            const autoDiscoveredDbId = await withTimeout(
+              discoverLatestAccessibleNotionDatabaseId(connection.accessToken),
+              WEBHOOK_EXTERNAL_TIMEOUT_MS,
+              "notion_auto_discover_db"
+            );
+            if (autoDiscoveredDbId && getMissingLineNotionDailyDbEnvVars().length === 0) {
+              await appendLineNotionDailyDbRecord({
+                createdAt: toJstIsoString(),
+                lineUserId,
+                databaseId: autoDiscoveredDbId,
+                status: "active",
+                updatedBy: lineUserId,
+                note: "auto_discovered_on_first_draft",
+              });
+              notionDatabaseIdOverride = autoDiscoveredDbId;
+              noMemoNotice =
+                "Notion連携済みDBを自動設定しました。必要なら `日報DB設定 <DB_ID>` で変更できます。";
+            }
+          } catch {
+            // 自動設定は失敗してもドラフト生成を継続
+          }
+        }
       }
 
       const notionData = await withTimeout(
-        getNotionDailyMemo({ lineUserId: actorId, notionApiKeyOverride }),
+        getNotionDailyMemo({
+          lineUserId: actorId,
+          notionApiKeyOverride,
+          notionDatabaseIdOverride,
+        }),
         WEBHOOK_EXTERNAL_TIMEOUT_MS,
         "notion_fetch"
       );

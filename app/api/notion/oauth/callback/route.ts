@@ -6,10 +6,15 @@ import {
   getMissingLineNotionConnectionEnvVars,
 } from "@/lib/line-notion-connection-store";
 import {
+  appendLineNotionDailyDbRecord,
+  getMissingLineNotionDailyDbEnvVars,
+} from "@/lib/line-notion-daily-db-store";
+import {
   exchangeNotionOAuthCode,
   getMissingNotionOAuthEnvVars,
   parseNotionOAuthState,
 } from "@/lib/notion-oauth";
+import { discoverLatestAccessibleNotionDatabaseId } from "@/lib/notion-phase1";
 
 function html(message: string) {
   return new NextResponse(
@@ -56,9 +61,32 @@ export async function GET(request: Request) {
       updatedBy: parsed.lineUserId,
       note: "oauth_callback_success",
     });
+
+    let autoDbMessage = "";
+    if (getMissingLineNotionDailyDbEnvVars().length === 0) {
+      try {
+        const autoDatabaseId = await discoverLatestAccessibleNotionDatabaseId(token.accessToken);
+        if (autoDatabaseId) {
+          await appendLineNotionDailyDbRecord({
+            createdAt: toJstIsoString(),
+            lineUserId: parsed.lineUserId,
+            databaseId: autoDatabaseId,
+            status: "active",
+            updatedBy: parsed.lineUserId,
+            note: "auto_discovered_on_oauth_callback",
+          });
+          autoDbMessage = `\n日報DBを自動設定しました: ${autoDatabaseId}`;
+        }
+      } catch {
+        // DB自動設定失敗でもNotion連携自体は成功扱いにする
+      }
+    }
+
     await notifyToLine({
       to: parsed.lineUserId,
-      message: `Notion連携が完了しました。workspace: ${token.workspaceName || token.workspaceId || "unknown"}`,
+      message: `Notion連携が完了しました。workspace: ${
+        token.workspaceName || token.workspaceId || "unknown"
+      }${autoDbMessage}\n必要なら \`日報DB設定 <DB_ID>\` で変更できます。`,
     });
     return html("Notion連携が完了しました。");
   } catch (error) {

@@ -27,6 +27,7 @@ export type DailyMemoParams = {
   lineUserId?: string;
   notionUserHint?: string;
   notionApiKeyOverride?: string;
+  notionDatabaseIdOverride?: string;
 };
 
 function richTextToPlainText(
@@ -339,7 +340,7 @@ function maybeMatchUser(page: NotionPage, hint: string) {
 }
 
 async function fetchDailyMemoFromDatabase(notion: Client, params: DailyMemoParams) {
-  const dbId = process.env.NOTION_DAILY_DB_ID || "";
+  const dbId = normalizeEnvValue(params.notionDatabaseIdOverride || process.env.NOTION_DAILY_DB_ID);
   if (!dbId) {
     throw new Error("missing_env_var:NOTION_DAILY_DB_ID");
   }
@@ -391,6 +392,51 @@ async function fetchDailyMemoFromDatabase(notion: Client, params: DailyMemoParam
     promptFromNotion: await fetchPromptTextFromPage(notion),
     note: `db:${dbId}, filter:last_edited_time(JST), dateProperty:${createdProp}`,
   };
+}
+
+type NotionSearchResponse = {
+  results?: Array<{
+    object?: string;
+    id?: string;
+  }>;
+};
+
+export async function discoverLatestAccessibleNotionDatabaseId(notionApiKeyOverride: string) {
+  const apiKey = normalizeEnvValue(notionApiKeyOverride || process.env.NOTION_API_KEY);
+  if (!apiKey) {
+    throw new Error("missing_env_var:NOTION_API_KEY");
+  }
+  const response = await fetch("https://api.notion.com/v1/search", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "Notion-Version": "2022-06-28",
+    },
+    body: JSON.stringify({
+      page_size: 10,
+      filter: {
+        value: "database",
+        property: "object",
+      },
+      sort: {
+        direction: "descending",
+        timestamp: "last_edited_time",
+      },
+    }),
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`notion_search_failed:${response.status}`);
+  }
+  let data: NotionSearchResponse;
+  try {
+    data = JSON.parse(text) as NotionSearchResponse;
+  } catch {
+    throw new Error("notion_search_invalid_json");
+  }
+  const first = (data.results || []).find((item) => item.object === "database" && item.id);
+  return first?.id || "";
 }
 
 async function fetchFallbackPageMemo(notion: Client) {
