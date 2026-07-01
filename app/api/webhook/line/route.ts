@@ -22,6 +22,16 @@ import {
   getMissingLineUserSettingsEnvVars,
   type LineForwardType,
 } from "@/lib/line-user-settings-store";
+import {
+  appendLineInviteRecord,
+  getLatestInviteByCode,
+  getMissingLineInviteEnvVars,
+} from "@/lib/line-invite-store";
+import {
+  appendLineMemberLinkRecord,
+  getLatestActiveMemberLink,
+  getMissingLineMemberLinkEnvVars,
+} from "@/lib/line-member-link-store";
 
 type LineWebhookEvent = {
   type?: string;
@@ -169,6 +179,22 @@ function isGroupRegisterCommand(text: string) {
 function isGroupCheckCommand(text: string) {
   const normalized = text.trim();
   return normalized === "グループ確認" || normalized === "送信先確認 グループ";
+}
+
+function isCreateMemberInviteCommand(text: string) {
+  const normalized = text.trim();
+  return normalized === "部下招待" || normalized === "招待作成";
+}
+
+function parseMemberLinkCommand(text: string) {
+  const normalized = text.trim();
+  const match = normalized.match(/^(?:連携|招待連携)\s+([A-Za-z0-9_-]{6,32})$/);
+  if (!match) return null;
+  return match[1].toUpperCase();
+}
+
+function createInviteCode() {
+  return crypto.randomBytes(5).toString("hex").toUpperCase();
 }
 
 function sanitizeFinalReportText(rawText: string) {
@@ -480,6 +506,144 @@ async function handleMessageEvent(
     }
   }
 
+  if (isCreateMemberInviteCommand(text)) {
+    const missing = [
+      ...getMissingLineInviteEnvVars(),
+      ...getMissingLineMemberLinkEnvVars(),
+    ];
+    if (missing.length > 0) {
+      await replyLineMessage(
+        replyToken,
+        `招待コード発行に必要な環境変数が不足しています: ${Array.from(new Set(missing)).join(", ")}`
+      );
+      return { status: "skipped", reason: "missing_env_for_invite_create" };
+    }
+
+    const target = detectRecipient(event.source);
+    if (!target) {
+      await replyLineMessage(replyToken, "送信先の識別に失敗しました。");
+      return { status: "skipped", reason: "invite_target_not_detected" };
+    }
+    if (!lineUserId && target.recipientType === "user") {
+      await replyLineMessage(
+        replyToken,
+        "招待コード作成はユーザーIDが取得できる1:1トークで実行してください。"
+      );
+      return { status: "skipped", reason: "invite_creator_user_id_missing" };
+    }
+
+    const createdAt = toJstIsoString();
+    const expiresAt = toJstIsoString(Date.now() + 30 * 60 * 1000);
+    const inviteCode = createInviteCode();
+    try {
+      await appendLineInviteRecord({
+        createdAt,
+        inviteCode,
+        targetLineId: target.lineId,
+        targetRecipientType: target.recipientType,
+        createdByLineUserId: lineUserId || actorId,
+        expiresAt,
+        status: "active",
+        usedByLineUserId: "",
+        usedAt: "",
+      });
+      await replyLineMessage(
+        replyToken,
+        [
+          `部下連携コード: ${inviteCode}`,
+          "部下は Bot の1:1トークで次を送信してください。",
+          `連携 ${inviteCode}`,
+          `有効期限: ${expiresAt}`,
+        ].join("\n")
+      );
+      return { status: "skipped", reason: "invite_created" };
+    } catch (error) {
+      await replyLineMessage(
+        replyToken,
+        `招待コード発行に失敗しました。${error instanceof Error ? error.message : "unknown"}`
+      );
+      return { status: "skipped", reason: "invite_create_failed" };
+    }
+  }
+
+  const inviteCode = parseMemberLinkCommand(text);
+  if (inviteCode) {
+    if (!lineUserId) {
+      await replyLineMessage(
+        replyToken,
+        "連携は Bot の1:1トークで実行してください。"
+      );
+      return { status: "skipped", reason: "member_link_user_id_missing" };
+    }
+    const missing = [
+      ...getMissingLineInviteEnvVars(),
+      ...getMissingLineMemberLinkEnvVars(),
+      ...getMissingLineUserSettingsEnvVars(),
+    ];
+    if (missing.length > 0) {
+      await replyLineMessage(
+        replyToken,
+        `連携保存に必要な環境変数が不足しています: ${Array.from(new Set(missing)).join(", ")}`
+      );
+      return { status: "skipped", reason: "missing_env_for_member_link" };
+    }
+    try {
+      const invite = await getLatestInviteByCode(inviteCode);
+      if (!invite || invite.status !== "active") {
+        await replyLineMessage(
+          replyToken,
+          "招待コードが無効です。上司から最新の招待コードを受け取ってください。"
+        );
+        return { status: "skipped", reason: "invite_invalid_or_missing" };
+      }
+      const expiresAt = Date.parse(invite.expiresAt);
+      if (Number.isNaN(expiresAt) || Date.now() > expiresAt) {
+        await replyLineMessage(
+          replyToken,
+          "招待コードの有効期限が切れています。上司に再発行を依頼してください。"
+        );
+        return { status: "skipped", reason: "invite_expired" };
+      }
+
+      const now = toJstIsoString();
+      await appendLineMemberLinkRecord({
+        createdAt: now,
+        memberLineUserId: lineUserId,
+        targetLineId: invite.targetLineId,
+        targetRecipientType: invite.targetRecipientType,
+        linkedByLineUserId: lineUserId,
+        sourceInviteCode: invite.inviteCode,
+        status: "active",
+      });
+      await appendLineInviteRecord({
+        ...invite,
+        createdAt: now,
+        status: "used",
+        usedByLineUserId: lineUserId,
+        usedAt: now,
+      });
+      await appendLineUserSetting({
+        createdAt: now,
+        lineUserId,
+        forwardType: invite.targetRecipientType,
+        updatedBy: lineUserId,
+        status: "active",
+      });
+
+      await replyLineMessage(
+        replyToken,
+        `連携が完了しました。以後の確定版は${invite.targetRecipientType === "group" ? "上司グループ" : "上司個人"}へ転送されます。`
+      );
+      return { status: "skipped", reason: "member_link_completed" };
+    } catch (error) {
+      await replyLineMessage(
+        replyToken,
+        `連携に失敗しました。${error instanceof Error ? error.message : "unknown"}`
+      );
+      return { status: "skipped", reason: "member_link_failed" };
+    }
+  }
+
   if (isCreateDraftTrigger(text)) {
     let notionText = "";
     let customPrompt = "";
@@ -540,13 +704,6 @@ async function handleMessageEvent(
   }
 
   const clerkUserId = resolveClerkUserId(request);
-  if (!clerkUserId) {
-    await replyLineMessage(
-      replyToken,
-      "連携ユーザーIDが未設定です。Webhook URL の clerkUserId を確認してください。"
-    );
-    return { status: "skipped" as const, reason: "clerk_user_id_missing" };
-  }
 
   let preferredType: LineRecipientType =
     (process.env.LINE_FORWARD_PREFERRED_TYPE || "group").trim() === "user" ? "user" : "group";
@@ -567,7 +724,17 @@ async function handleMessageEvent(
     }
   }
 
-  const dynamicTarget = await resolveDynamicForwardTargetWithType(clerkUserId, preferredType);
+  const memberLinkedTarget = lineUserId
+    ? await getLatestActiveMemberLink(lineUserId)
+    : null;
+  const dynamicTarget = memberLinkedTarget
+    ? {
+        lineId: memberLinkedTarget.targetLineId,
+        recipientType: memberLinkedTarget.targetRecipientType,
+      }
+    : clerkUserId
+      ? await resolveDynamicForwardTargetWithType(clerkUserId, preferredType)
+      : null;
   const fallbackTarget =
     normalizeEnvValue(process.env.LINE_FINAL_TARGET_ID) ||
     normalizeEnvValue(process.env.LINE_USER_ID);
@@ -575,7 +742,7 @@ async function handleMessageEvent(
   if (!forwardTo) {
     await replyLineMessage(
       replyToken,
-      "転送先が未設定です。管理画面のLINE送信先設定とBotの友だち追加/グループ招待を確認してください。"
+      "転送先が未設定です。上司は `部下招待`、部下は `連携 <コード>` を実行してください。"
     );
     return { status: "skipped" as const, reason: "forward_target_missing" };
   }
@@ -606,7 +773,7 @@ async function handleMessageEvent(
         appendReportHistory({
           sentAt: toJstIsoString(),
           toolName: `LINEトーク / Notion / LINE(${dynamicTarget?.recipientType || "fallback"})`,
-          checklistSummary: `確定版送信 from ${actorId} / clerk:${clerkUserId}`,
+          checklistSummary: `確定版送信 from ${actorId}${clerkUserId ? ` / clerk:${clerkUserId}` : ""}`,
           formattedMessage: finalBody,
           dataDestination: "Notion",
           reportDestination: "LINE",
