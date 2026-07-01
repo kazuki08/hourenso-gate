@@ -5,7 +5,11 @@ import {
   type SheetDestination,
 } from "../../../lib/sheet-destinations";
 import { getMissingNotifierEnvVars, notifyToLine } from "@/lib/notifiers";
-import { normalizeEnvValue, normalizeMultilineEnvValue } from "@/lib/env-utils";
+import {
+  normalizeEnvValue,
+  normalizeMultilineEnvValue,
+  toJstIsoString,
+} from "@/lib/env-utils";
 
 type SendReportBody = {
   message?: string;
@@ -74,7 +78,7 @@ async function appendToGoogleSheet(params: {
     requestBody: {
       values: [
         [
-          new Date().toISOString(),
+          toJstIsoString(),
           params.toolName,
           params.message,
           "sent_to_line",

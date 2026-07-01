@@ -3,6 +3,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 import {
   appendLineLinkRecord,
+  getLatestLineLinkRecordByType,
   getMissingLineLinkEnvVars,
   type LineRecipientType,
 } from "@/lib/line-link-store";
@@ -14,7 +15,13 @@ import {
   appendReportHistory,
   getMissingReportHistoryEnvVars,
 } from "@/lib/report-history-store";
-import { normalizeEnvValue } from "@/lib/env-utils";
+import { normalizeEnvValue, toJstIsoString } from "@/lib/env-utils";
+import {
+  appendLineUserSetting,
+  getLatestLineUserSetting,
+  getMissingLineUserSettingsEnvVars,
+  type LineForwardType,
+} from "@/lib/line-user-settings-store";
 
 type LineWebhookEvent = {
   type?: string;
@@ -142,6 +149,18 @@ function isCreateDraftTrigger(text: string) {
   return text.includes("日報作成");
 }
 
+function parseForwardSettingCommand(text: string): LineForwardType | null {
+  const normalized = text.trim();
+  if (normalized === "設定 個人" || normalized === "送信先設定 個人") return "user";
+  if (normalized === "設定 グループ" || normalized === "送信先設定 グループ") return "group";
+  return null;
+}
+
+function isForwardSettingCheckCommand(text: string) {
+  const normalized = text.trim();
+  return normalized === "設定確認" || normalized === "送信先設定確認";
+}
+
 function sanitizeFinalReportText(rawText: string) {
   const trimmed = rawText.trim();
   if (!trimmed) return "";
@@ -233,12 +252,7 @@ async function handleLinkEvent(
     return { linked: false, reason: `missing_env_vars:${missing.join(",")}` };
   }
 
-  const reqUrl = new URL(request.url);
-  const clerkUserId =
-    reqUrl.searchParams.get("clerkUserId") ||
-    request.headers.get("x-clerk-user-id") ||
-    process.env.LINE_DEFAULT_CLERK_USER_ID ||
-    "";
+  const clerkUserId = resolveClerkUserId(request);
   if (!clerkUserId) {
     return { linked: false, reason: "clerk_user_id_missing" };
   }
@@ -250,7 +264,7 @@ async function handleLinkEvent(
 
   await appendLineLinkRecord(
     {
-      createdAt: new Date().toISOString(),
+      createdAt: toJstIsoString(),
       clerkUserId,
       recipientType: detected.recipientType,
       lineId: detected.lineId,
@@ -261,14 +275,108 @@ async function handleLinkEvent(
   return { linked: true };
 }
 
+function resolveClerkUserId(request: Request) {
+  const reqUrl = new URL(request.url);
+  return (
+    reqUrl.searchParams.get("clerkUserId") ||
+    request.headers.get("x-clerk-user-id") ||
+    process.env.LINE_DEFAULT_CLERK_USER_ID ||
+    ""
+  ).trim();
+}
+
+async function resolveDynamicForwardTargetWithType(
+  clerkUserId: string,
+  preferredType: LineRecipientType
+) {
+  const primaryType: LineRecipientType = preferredType;
+  const secondaryType: LineRecipientType = primaryType === "group" ? "user" : "group";
+
+  const primary = await getLatestLineLinkRecordByType(clerkUserId, primaryType);
+  if (primary) {
+    return { lineId: primary.lineId, recipientType: primary.recipientType };
+  }
+
+  const secondary = await getLatestLineLinkRecordByType(clerkUserId, secondaryType);
+  if (secondary) {
+    return { lineId: secondary.lineId, recipientType: secondary.recipientType };
+  }
+
+  return null;
+}
+
 async function handleMessageEvent(
-  event: LineWebhookEvent
+  event: LineWebhookEvent,
+  request: Request
 ): Promise<MessageEventResult> {
   const replyToken = event.replyToken || "";
   const text = event.message?.text?.trim() || "";
   const actorId = getSourceActorId(event.source);
+  const lineUserId = event.source?.userId || "";
   if (!replyToken || !text || !actorId) {
     return { status: "skipped" as const, reason: "invalid_message_event" };
+  }
+
+  const setType = parseForwardSettingCommand(text);
+  if (setType) {
+    if (!lineUserId) {
+      await replyLineMessage(
+        replyToken,
+        "送信先設定はユーザーIDが取得できるチャットで実行してください。"
+      );
+      return { status: "skipped", reason: "line_user_id_missing_for_setting" };
+    }
+    const missing = getMissingLineUserSettingsEnvVars();
+    if (missing.length > 0) {
+      await replyLineMessage(
+        replyToken,
+        `設定保存に必要な環境変数が不足しています: ${missing.join(", ")}`
+      );
+      return { status: "skipped", reason: "missing_env_for_setting" };
+    }
+    try {
+      await appendLineUserSetting({
+        createdAt: toJstIsoString(),
+        lineUserId,
+        forwardType: setType,
+        updatedBy: lineUserId,
+        status: "active",
+      });
+      await replyLineMessage(
+        replyToken,
+        `送信先設定を「${setType === "group" ? "グループ宛" : "個人宛"}」に更新しました。`
+      );
+      return { status: "skipped", reason: "setting_updated" };
+    } catch (error) {
+      await replyLineMessage(
+        replyToken,
+        `送信先設定の保存に失敗しました。${error instanceof Error ? error.message : "unknown"}`
+      );
+      return { status: "skipped", reason: "setting_update_failed" };
+    }
+  }
+
+  if (isForwardSettingCheckCommand(text)) {
+    if (!lineUserId) {
+      await replyLineMessage(replyToken, "現在の送信先設定を取得できませんでした。");
+      return { status: "skipped", reason: "line_user_id_missing_for_setting_check" };
+    }
+    try {
+      const setting = await getLatestLineUserSetting(lineUserId);
+      await replyLineMessage(
+        replyToken,
+        setting
+          ? `現在の送信先設定: ${setting.forwardType === "group" ? "グループ宛" : "個人宛"}`
+          : "現在の送信先設定は未登録です。`設定 個人` または `設定 グループ` と送信してください。"
+      );
+      return { status: "skipped", reason: "setting_checked" };
+    } catch (error) {
+      await replyLineMessage(
+        replyToken,
+        `送信先設定の確認に失敗しました。${error instanceof Error ? error.message : "unknown"}`
+      );
+      return { status: "skipped", reason: "setting_check_failed" };
+    }
   }
 
   if (isCreateDraftTrigger(text)) {
@@ -330,11 +438,43 @@ async function handleMessageEvent(
     return { status: "skipped" as const, reason: "pending_draft_not_found" };
   }
 
-  const forwardTo = process.env.LINE_FINAL_TARGET_ID || process.env.LINE_USER_ID || "";
+  const clerkUserId = resolveClerkUserId(request);
+  if (!clerkUserId) {
+    await replyLineMessage(
+      replyToken,
+      "連携ユーザーIDが未設定です。Webhook URL の clerkUserId を確認してください。"
+    );
+    return { status: "skipped" as const, reason: "clerk_user_id_missing" };
+  }
+
+  let preferredType: LineRecipientType =
+    (process.env.LINE_FORWARD_PREFERRED_TYPE || "group").trim() === "user" ? "user" : "group";
+  if (lineUserId) {
+    try {
+      const setting = await getLatestLineUserSetting(lineUserId);
+      if (setting) {
+        preferredType = setting.forwardType;
+      }
+    } catch (error) {
+      console.error(
+        `${WEBHOOK_LOG_PREFIX} user setting fetch failed`,
+        JSON.stringify({
+          lineUserId,
+          message: error instanceof Error ? error.message : "unknown",
+        })
+      );
+    }
+  }
+
+  const dynamicTarget = await resolveDynamicForwardTargetWithType(clerkUserId, preferredType);
+  const fallbackTarget =
+    normalizeEnvValue(process.env.LINE_FINAL_TARGET_ID) ||
+    normalizeEnvValue(process.env.LINE_USER_ID);
+  const forwardTo = dynamicTarget?.lineId || fallbackTarget;
   if (!forwardTo) {
     await replyLineMessage(
       replyToken,
-      "転送先が未設定です。運用者へ `LINE_FINAL_TARGET_ID` または `LINE_USER_ID` の設定を依頼してください。"
+      "転送先が未設定です。管理画面のLINE送信先設定とBotの友だち追加/グループ招待を確認してください。"
     );
     return { status: "skipped" as const, reason: "forward_target_missing" };
   }
@@ -363,9 +503,9 @@ async function handleMessageEvent(
     try {
       await withTimeout(
         appendReportHistory({
-          sentAt: new Date().toISOString(),
-          toolName: "LINEトーク / Notion / LINE",
-          checklistSummary: `確定版送信 from ${actorId}`,
+          sentAt: toJstIsoString(),
+          toolName: `LINEトーク / Notion / LINE(${dynamicTarget?.recipientType || "fallback"})`,
+          checklistSummary: `確定版送信 from ${actorId} / clerk:${clerkUserId}`,
           formattedMessage: finalBody,
           dataDestination: "Notion",
           reportDestination: "LINE",
@@ -469,7 +609,7 @@ export async function POST(request: Request) {
       }
 
       if (event.type === "message" && event.message?.type === "text") {
-        const result = await handleMessageEvent(event);
+        const result = await handleMessageEvent(event, request);
         if (result.status === "draft_generated") {
           summary.draftsGenerated += 1;
         } else if (result.status === "final_forwarded") {

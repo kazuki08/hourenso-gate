@@ -1,7 +1,11 @@
 import { auth } from "@clerk/nextjs/server";
 import { google } from "googleapis";
 import { NextResponse } from "next/server";
-import { normalizeEnvValue, normalizeMultilineEnvValue } from "@/lib/env-utils";
+import {
+  normalizeEnvValue,
+  normalizeMultilineEnvValue,
+  toJstIsoString,
+} from "@/lib/env-utils";
 
 type HistoryItem = {
   id: string;
@@ -98,7 +102,7 @@ export async function GET() {
 
         return {
           id: `${sentAt || "unknown"}-${index}`,
-          sentAt: sentAt || new Date(0).toISOString(),
+          sentAt: sentAt || toJstIsoString(0),
           senderName: String(row[6] || "未設定"),
           mode: normalizeMode(String(row[7] || "")),
           message: message || "（報告内容なし）",

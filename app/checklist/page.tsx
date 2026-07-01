@@ -18,6 +18,7 @@ import {
   type TemplateVisibilityRule,
 } from "../template-storage";
 import { DEFAULT_AI_FORMAT_PROMPT } from "../../lib/prompts";
+import { toJstIsoString } from "../../lib/env-utils";
 
 const SEND_MESSAGE_PLACEHOLDER = `・〇〇の対応が完了しました。テスト等のレイアウト崩れも修正済みです。
 ・△△について、ページ遷移周りで詰まっています。後ほどご相談させてください。
@@ -533,7 +534,7 @@ export default function ChecklistPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          sentAt: new Date().toISOString(),
+          sentAt: toJstIsoString(),
           message: formattedMessage,
           toolName: activeToolName,
           senderName,

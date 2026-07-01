@@ -26,3 +26,13 @@ export function normalizeMultilineEnvValue(value: string | undefined) {
 
   return normalized.replace(/\r/g, "");
 }
+
+export function toJstIsoString(input: Date | string | number = new Date()) {
+  const date = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const jstTime = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+  return `${jstTime.toISOString().slice(0, -1)}+09:00`;
+}

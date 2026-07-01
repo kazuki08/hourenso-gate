@@ -6,6 +6,7 @@ import {
   appendReportHistory,
   getMissingReportHistoryEnvVars,
 } from "@/lib/report-history-store";
+import { toJstIsoString } from "@/lib/env-utils";
 
 type ChecklistState = {
   id: string;
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
 
     const body = (await request.json()) as SaveToSheetBody;
     const { userId } = await auth();
-    const sentAt = body.sentAt || new Date().toISOString();
+    const sentAt = body.sentAt || toJstIsoString();
     const toolName = body.toolName?.trim() || "未指定";
     const senderName = body.senderName?.trim() || "未設定";
     const mode = body.mode === "medium" || body.mode === "low" ? body.mode : "high";

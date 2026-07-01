@@ -86,6 +86,28 @@ export async function appendLineLinkRecord(
 }
 
 export async function getLatestLineLinkRecord(clerkUserId: string) {
+  const filtered = await getLineLinkRecords(clerkUserId);
+  if (filtered.length === 0) {
+    return null;
+  }
+  filtered.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return filtered[0];
+}
+
+export async function getLatestLineLinkRecordByType(
+  clerkUserId: string,
+  recipientType: LineRecipientType
+) {
+  const filtered = await getLineLinkRecords(clerkUserId);
+  const typed = filtered.filter((row) => row.recipientType === recipientType);
+  if (typed.length === 0) {
+    return null;
+  }
+  typed.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return typed[0];
+}
+
+async function getLineLinkRecords(clerkUserId: string) {
   const sheets = createSheetsClient();
   const spreadsheetId = getSpreadsheetId();
   const sheetName = getLineLinkSheetName();
@@ -111,10 +133,5 @@ export async function getLatestLineLinkRecord(clerkUserId: string) {
         row.lineId !== ""
     );
 
-  if (filtered.length === 0) {
-    return null;
-  }
-
-  filtered.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  return filtered[0];
+  return filtered;
 }

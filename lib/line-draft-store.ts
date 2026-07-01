@@ -1,3 +1,5 @@
+import { toJstIsoString } from "@/lib/env-utils";
+
 type PendingDraft = {
   lineUserId: string;
   draftText: string;
@@ -21,7 +23,7 @@ export function setPendingDraft(input: {
     lineUserId: input.lineUserId,
     draftText: input.draftText,
     notionSummary: input.notionSummary,
-    generatedAt: new Date().toISOString(),
+    generatedAt: toJstIsoString(),
   };
   pendingDrafts.set(input.lineUserId, payload);
   return payload;
