@@ -408,20 +408,30 @@ async function fetchDailyMemoFromDatabase(notion: Client, params: DailyMemoParam
   const pages = shouldFilterByUser
     ? fetchedPages.filter((page) => maybeMatchUser(page, userHint))
     : fetchedPages;
+  const pagesWithoutUserFilter = fetchedPages;
 
   // 本日更新が0件でも、外部運用では「最新タスク一覧」を日報化したい要件があるため、
   // 直近更新順の再取得を行う。
   let effectivePages = pages;
   let selectionMode = "today_last_edited";
+  if (effectivePages.length === 0 && shouldFilterByUser && pagesWithoutUserFilter.length > 0) {
+    effectivePages = pagesWithoutUserFilter;
+    selectionMode = "today_last_edited_user_filter_relaxed";
+  }
   if (effectivePages.length === 0) {
     const latestPages = await queryDatabaseLatestPages({
       databaseId: dbId,
       notionApiKeyOverride: params.notionApiKeyOverride,
     });
-    effectivePages = shouldFilterByUser
+    const filteredLatestPages = shouldFilterByUser
       ? latestPages.filter((page) => maybeMatchUser(page, userHint))
       : latestPages;
+    effectivePages = filteredLatestPages;
     selectionMode = "latest_fallback";
+    if (effectivePages.length === 0 && shouldFilterByUser && latestPages.length > 0) {
+      effectivePages = latestPages;
+      selectionMode = "latest_fallback_user_filter_relaxed";
+    }
   }
 
   if (effectivePages.length === 0) {
