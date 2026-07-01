@@ -82,6 +82,9 @@ type MessageEventResult =
 
 const WEBHOOK_LOG_PREFIX = "[LINE Webhook]";
 const WEBHOOK_EXTERNAL_TIMEOUT_MS = 3500;
+const BOT_INFO_CACHE_TTL_MS = 1000 * 60 * 60 * 6;
+let cachedLineAddFriendUrl = "";
+let cachedLineAddFriendUrlAt = 0;
 
 async function withTimeout<T>(
   task: Promise<T>,
@@ -163,6 +166,46 @@ async function replyLineMessage(replyToken: string, text: string) {
   if (!response.ok) {
     const detail = await response.text();
     throw new Error(`LINE reply failed: ${response.status} ${detail}`);
+  }
+}
+
+async function resolveLineAddFriendUrl() {
+  const now = Date.now();
+  if (cachedLineAddFriendUrl && now - cachedLineAddFriendUrlAt < BOT_INFO_CACHE_TTL_MS) {
+    return cachedLineAddFriendUrl;
+  }
+
+  const token = getLineToken();
+  if (!token) {
+    return "";
+  }
+
+  try {
+    const response = await fetch("https://api.line.me/v2/bot/info", {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`line_bot_info_failed:${response.status}`);
+    }
+    const payload = (await response.json()) as { basicId?: string };
+    const basicId = (payload.basicId || "").trim();
+    if (!basicId) {
+      return "";
+    }
+    cachedLineAddFriendUrl = `https://line.me/R/ti/p/${basicId}`;
+    cachedLineAddFriendUrlAt = now;
+    return cachedLineAddFriendUrl;
+  } catch (error) {
+    console.error(
+      `${WEBHOOK_LOG_PREFIX} bot info fetch failed`,
+      JSON.stringify({
+        message: error instanceof Error ? error.message : "unknown",
+      })
+    );
+    return "";
   }
 }
 
@@ -851,16 +894,18 @@ async function handleMessageEvent(
         usedByLineUserId: "",
         usedAt: "",
       });
+      const lineAddFriendUrl = await resolveLineAddFriendUrl();
       await replyLineMessage(
         replyToken,
         [
           `組織: ${organizationNameForInvite}`,
           `部下連携コード: ${inviteCode}`,
-          "部下は Bot の1:1トークで次を送信してください。",
-          `連携 ${inviteCode}`,
-          normalizeEnvValue(process.env.NEXT_PUBLIC_LINE_ADD_FRIEND_URL)
-            ? `Bot追加URL: ${normalizeEnvValue(process.env.NEXT_PUBLIC_LINE_ADD_FRIEND_URL)}`
-            : "",
+          "部下は Bot の1:1トークで次の1行をそのまま送信してください。",
+          `【コピペ用】連携 ${inviteCode}`,
+          "",
+          "共有テンプレ:",
+          `Bot追加後に「連携 ${inviteCode}」と送ってください。`,
+          lineAddFriendUrl ? `Bot追加URL: ${lineAddFriendUrl}` : "",
           `有効期限: ${expiresAt}`,
         ]
           .filter(Boolean)
